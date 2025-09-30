@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<!-- saved from url=(0059)file:///D:/ERA5/Particle_Codes/Hybrid/New_Hybrid2/Info.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Comprehensive technical documentation for the Hybrid Particle Tracker - atmospheric simulation software with C++/Python architecture">
+    <meta name="keywords" content="particle tracking, atmospheric simulation, ERA5, Lagrangian transport, meteorological modeling, C++, Python">
+    <meta name="author" content="Manish Shukla, R. Maheshwaran">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://YOURGitHubUsername.github.io/YOUR_REPO_NAME/Info_page/Hybrid%20Particle%20Tracker%20-%20System%20Documentation.html">
+    <title>Hybrid Particle Tracker - System Documentation</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; background-color: #f4f4f4; color: #333; }
+        .page-wrapper { display: flex; }
+        .sidebar { width: 250px; background-color: #2c3e50; color: #ecf0f1; padding: 20px; height: 100vh; position: fixed; top: 0; left: 0; overflow-y: auto; }
+        .sidebar h3 { color: #3498db; margin-top: 0; }
+        .sidebar ul { list-style-type: none; padding: 0; }
+        .sidebar ul li a { color: #ecf0f1; text-decoration: none; display: block; padding: 8px 0; transition: background-color 0.3s; }
+        .sidebar ul li a:hover { background-color: #34495e; }
+        .main-content { margin-left: 270px; /* Adjust based on sidebar width + padding */ padding: 20px; flex-grow: 1; }
+        .container { max-width: 900px; /* Adjusted for potentially narrower main content area */ margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2, h3, h4 { color: #2c3e50; }
+        h1 { text-align: center; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        h2 { border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 30px; }
+        h3 { margin-top: 20px; }
+        code { background-color: #ecf0f1; padding: 2px 5px; border-radius: 4px; font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; }
+        pre { background-color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        .formula { background-color: #e8f6fd; border-left: 5px solid #3498db; padding: 10px; margin: 15px 0; font-style: italic; }
+        .diagram-container {
+            margin: 15px 0;   /* Vertical margin for the container */
+        }
+        .diagram-container iframe {
+            width: 100%;       /* Make iframe take full width of its container */
+            /* min-height removed for individual control */
+            border: 1px solid #ddd; /* Border for the iframe itself */
+            display: block;    /* Ensures proper block-level behavior */
+        }
+        /* Individual iframe heights */
+        #iframe-system-architecture { height: 780px; }
+        #iframe-particle-orientation { height: 980px; } /* SVG height is 950, plus some padding */
+        #iframe-simulation-flowchart { height: 1850px; } /* This is a tall flowchart */
+        #iframe-velocity-interpolation-concept { height: 700px; }
+        #iframe-spatial-interpolation { height: 800px; } /* Based on viewBox and scaling */
+        #iframe-temporal-interpolation { height: 600px; }
+        #iframe-rk4-advection { height: 800px; }
+
+        .placeholder { background-color: #f9f9f9; border: 1px dashed #ccc; padding: 20px; text-align: center; margin: 20px 0; color: #777; }
+        .diagram-container img { max-width: 100%; height: auto; border: 1px solid #ddd; margin: 15px 0; display: block; margin-left: auto; margin-right: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #3498db; color: white; }
+        ul { margin-left: 20px; }
+        .note { background-color: #fffacd; border-left: 5px solid #f0ad4e; padding: 10px; margin: 15px 0; }
+    </style>
+    <script>
+        // Optional: Smooth scrolling
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.sidebar a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href');
+                    const targetElement = document.querySelector(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+<div class="page-wrapper">
+    <div class="sidebar">
+        <h3>Table of Contents</h3>
+        <ul>
+            <li><a href="#introduction">1. Introduction</a></li>
+            <li><a href="#architecture">2. System Architecture</a></li>
+            <li><a href="#configuration">3. Configuration</a></li>
+            <li><a href="#data-handling">4. Data Handling</a>
+                <ul>
+                    <li><a href="#csv-data">4.1. CSV Data</a></li>
+                    <li><a href="#api-data">4.2. API Data</a></li>
+                </ul>
+            </li>
+            <li><a href="#particle-initialization">5. Parcel Initialization</a></li>
+            <li><a href="#simulation-loop">6. Core Simulation Loop</a></li>
+            <li><a href="#velocity-interpolation">7. Velocity Interpolation</a>
+                <ul>
+                    <li><a href="#spatial-interpolation">7.1. Spatial Interpolation</a></li>
+                    <li><a href="#temporal-interpolation">7.2. Temporal Interpolation</a></li>
+                </ul>
+            </li>
+            <li><a href="#particle-advection-rk4">8. Particle Advection (RK4)</a>
+                <ul>
+                    <li><a href="#velocity-derivatives">8.1. Velocity Derivatives</a></li>
+                </ul>
+            </li>
+            <li><a href="#boundary-conditions">9. Boundary Conditions</a></li>
+            <li><a href="#scalar-transport">10. Scalar Transport</a></li>
+            <li><a href="#output">11. Output</a></li>
+            <li><a href="#visualization">12. Visualization</a></li>
+            <li><a href="#cpp-engine">13. C++ Engine</a></li>
+            <li><a href="#build-process">14. Build Process</a></li>
+            <li><a href="#testing">15. Testing and Consistency</a></li>
+            <li><a href="#conclusion">16. Conclusion</a></li>
+        </ul>
+        <div style="margin-top: 20px; border-top: 1px solid #34495e; padding-top: 10px;">
+            <p><a href="../README.md" style="color: #3498db; text-decoration: none;">← Back to README.md</a></p>
+            <p><a href=".." style="color: #3498db; text-decoration: none;">← Back to Repository</a></p>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <h1>Hybrid Parcel Tracker - System Documentation</h1>
+
+            <section id="introduction">
+                <h2>1. Introduction</h2>
+                <p>The Hybrid Parcel Tracker is a high-performance system designed for simulating the trajectories of air parcels within atmospheric or oceanic flows. It leverages a hybrid C++/Python architecture to combine the computational efficiency of C++ for core calculations with the flexibility and ease of use of Python for orchestration, data handling, and visualization.</p>
+                <p><strong>Authors:</strong> Manish Shukla (Postdoctoral student, Indian Institute of Technology Hyderabad, manishshukla01@live.com) and R. Maheshwaran (Assistant Professor, Indian Institute of Technology, Hyderabad)</p>
+                <p>This document outlines the system's architecture, data processing flow, core algorithms, mathematical formulas, and key implementation details.</p>
+            </section>
+
+            <section id="architecture">
+                <h2>2. System Architecture</h2>
+                <p>The system is composed of several key components that interact to perform the simulation:</p>
+                <div class="diagram-container"><img id="img-system-architecture" src="./Hybrid Particle Tracker - System Documentation_files/System_Architecture.png" alt="High-Level System Architecture Diagram"></div>
+                <ul>
+                    <li><strong>Python Orchestrator (<code>particle_tracker.py</code>):</strong> The main driver of the simulation. It handles configuration, manages the simulation loop, calls data loading routines, invokes the particle update engine, and coordinates output and visualization.</li>
+                    <li><strong>C++ Particle Engine (<code>particle_engine_cpp</code> module):</strong> A compiled C++ extension (using Pybind11) that performs computationally intensive tasks. It includes:
+                        <ul>
+                            <li><code>ParticleEngine</code>: Main C++ class callable from Python.</li>
+                            <li><code>RK4Integrator</code>: Implements the Runge-Kutta 4th order method for particle advection.</li>
+                            <li><code>RegularGrid3DInterpolator</code>: Performs 3D trilinear interpolation of velocity fields.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Data Handlers:</strong>
+                        <ul>
+                            <li><strong>CSV Data Loader (<code>data_loader.py</code> - <code>VelocityDataLoader</code> class):</strong> Responsible for loading velocity data from pre-processed CSV files, where each file typically represents a specific variable (u, v, w) at a specific pressure level and time.</li>
+                            <li><strong>API Data Handler (<code>api_data_handler.py</code> - <code>APIDataHandler</code> class):</strong> Manages downloading and processing of meteorological data (e.g., ERA5) from online APIs like the Copernicus Climate Data Store (CDS). It handles NetCDF files.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Visualization (<code>visualization.py</code> - <code>ParticleVisualizer</code> class):</strong> Generates plots of particle positions, trajectories, and other diagnostic information using Matplotlib and Cartopy.</li>
+                    <li><strong>Configuration (<code>run_simulation.py</code>):</strong> A Python script where users define all simulation parameters, input/output paths, and model settings.</li>
+                </ul>
+            </section>
+
+            <section id="configuration">
+                <h2>3. Configuration (<code>run_simulation.py</code>)</h2>
+                <p>The simulation is controlled by a configuration dictionary defined in <code>run_simulation.py</code>. Key parameters include:</p>
+                <table>
+                    <thead>
+                        <tr><th>Parameter</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>data_source</code></td><td>Specifies data source: "CSV" or "API".</td></tr>
+                        <tr><td><code>csv_base_dir</code> / <code>api_data_dir</code></td><td>Base directory for input data files.</td></tr>
+                        <tr><td><code>output_dir</code> / <code>checkpoint_dir</code></td><td>Directories for simulation outputs and checkpoints.</td></tr>
+                        <tr><td><code>pressure_levels</code></td><td>List of pressure levels (hPa) present in the input data.</td></tr>
+                        <tr><td><code>initialization_lat_range</code>, <code>initialization_lon_range</code></td><td>Latitude and longitude bounds for initial particle placement.</td></tr>
+                        <tr><td><code>initialization_pressure_levels</code></td><td>Pressure levels at which particles are initialized.</td></tr>
+                        <tr><td><code>initialization_spacing_km</code></td><td>Desired approximate physical spacing (in km) between initialized particles.</td></tr>
+                        <tr><td><code>simulation_start_datetime</code> / <code>simulation_end_datetime</code></td><td>Start and end UTC date-times for API mode.</td></tr>
+                        <tr><td><code>simulation_start_hour</code></td><td>Absolute hour to start simulation (CSV mode) or offset from <code>simulation_start_datetime</code> (API mode).</td></tr>
+                        <tr><td><code>total_simulation_hours</code></td><td>Total duration of the simulation in hours.</td></tr>
+                        <tr><td><code>data_interval_hours</code></td><td>Frequency (in hours) at which new velocity data files are available.</td></tr>
+                        <tr><td><code>simulation_step_hours</code></td><td>Time step (in hours) for particle position updates (dt).</td></tr>
+                        <tr><td><code>output_interval_hours</code></td><td>Frequency (in hours) for saving particle data and plots.</td></tr>
+                        <tr><td><code>checkpoint_interval_hours</code></td><td>Frequency (in hours) for saving simulation checkpoints.</td></tr>
+                        <tr><td><code>output_format</code></td><td>Output file format: "CSV" or "NETCDF".</td></tr>
+                        <tr><td><code>plot_lat_range</code>, <code>plot_lon_range</code></td><td>Optional latitude/longitude range for output plots.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="data-handling">
+                <h2>4. Data Handling</h2>
+                <p>The system supports two primary data sources: pre-processed CSV files and direct downloads via an API (e.g., ERA5 from CDS).</p>
+
+                <h3 id="csv-data">4.1. CSV Data (<code>VelocityDataLoader</code>)</h3>
+                <p>When <code>data_source</code> is "CSV", the <code>VelocityDataLoader</code> class is used.</p>
+                <ul>
+                    <li><strong>File Structure:</strong> Expects CSV files organized into subdirectories for each variable (e.g., <code>u/</code>, <code>v/</code>, <code>w/</code>). Filenames typically follow a pattern like <code>{variable}_{pressure_level}_{hour_index}.csv</code> (e.g., <code>u_500_1.csv</code>). Each CSV file contains 'Latitude', 'Longitude', and the variable's value for that specific pressure level and time index.</li>
+                    <li><strong>Loading Process:</strong>
+                        <ol>
+                            <li>For a given variable (u, v, or w) and <code>hour_index</code>, it iterates through all configured <code>pressure_levels</code>.</li>
+                            <li>Reads the corresponding CSV file for each pressure level.</li>
+                            <li>Concatenates data from all pressure levels into a single Pandas DataFrame.</li>
+                            <li>Constructs a 3D NumPy array (grid) with dimensions (latitude, longitude, pressure). Latitude and longitude coordinates are sorted in ascending order.</li>
+                            <li>Handles missing files or empty data by returning <code>None</code>, which typically halts the simulation. NaN values in data are logged and filled with 0.</li>
+                            <li>The 3D grid is then flattened into a 1D array (row-major order) for compatibility with the C++ interpolator.</li>
+                        </ol>
+                    </li>
+                    <li><strong>File Index Calculation (in <code>HybridParticleTracker.load_velocity_data</code>):</strong>
+                        <div class="formula">
+                            <code>hour<sub>relative_to_csv_start</sub> = absolute_sim_hour - csv_actual_start_hour</code><br>
+                            <code>csv_file_index<sub>0based</sub> = floor(hour<sub>relative_to_csv_start</sub> / data_interval_hours + 1e-9)</code><br>
+                            <code>csv_file_hour_index = csv_file_index<sub>0based</sub> + 1</code> (1-based index for filenames)
+                        </div>
+                        Where <code>absolute_sim_hour</code> is the simulation time for which data is needed, and <code>csv_actual_start_hour</code> is the <code>simulation_start_hour</code> from the config for CSV mode.
+                    </li>
+                </ul>
+
+                <h3 id="api-data">4.2. API Data (<code>APIDataHandler</code>)</h3>
+                <p>When <code>data_source</code> is "API", the <code>APIDataHandler</code> class is used.</p>
+                <ul>
+                    <li><strong>CDS API Interaction:</strong> Uses the <code>cdsapi</code> Python client to request and download data (e.g., ERA5 reanalysis on pressure levels).</li>
+                    <li><strong>Data Download and Caching:</strong>
+                        <ul>
+                            <li>Downloads data in daily NetCDF files to a local directory (<code>api_data_dir</code>) to avoid repeated downloads.</li>
+                            <li>Checks for existing files before attempting a new download for a given day.</li>
+                            <li>Variables requested typically include u-component, v-component of wind, vertical velocity (omega), specific humidity, and temperature.</li>
+                        </ul>
+                    </li>
+                    <li><strong>NetCDF Processing:</strong>
+                        <ul>
+                            <li>Uses <code>xarray</code> to open and process the downloaded NetCDF files.</li>
+                            <li>Selects data for the specific <code>target_datetime_utc</code> (hour).</li>
+                            <li>Handles different possible time coordinate names in NetCDF files (e.g., 'time', 'valid_time').</li>
+                        </ul>
+                    </li>
+                    <li><strong>Coordinate System Handling:</strong>
+                        <ul>
+                            <li>Ensures latitude coordinates are sorted in ascending order (ERA5 data often has descending latitudes).</li>
+                            <li>Transposes data arrays to a consistent order (latitude, longitude, pressure_level) before flattening. This ensures compatibility with the interpolators.</li>
+                            <li>Pressure levels are taken from the configuration, assuming they match the levels in the downloaded NetCDF file.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Output:</strong> Returns tuples containing coordinate arrays (lats, lons, pressures) and the flattened data values for u, v, w, q (specific humidity), and t (temperature). Missing q or t variables are handled gracefully.</li>
+                </ul>
+            </section>
+
+            <section id="particle-initialization">
+                <h2>5. Particle Initialization</h2>
+                <p>Particles are initialized on a regular grid in latitude, longitude, and pressure space. This is handled by <code>HybridParticleTracker.initialize_particles</code>, which can delegate to a C++ implementation or use a Python fallback.</p>
+                <div class="diagram-container"><img id="img-particle-orientation" src="./Hybrid Particle Tracker - System Documentation_files/particle_Orientation.png" alt="Particle Initialization on a Lat/Lon/Pressure Grid"></div>
+                <ul>
+                    <li><strong>Input Parameters:</strong> Latitude range, longitude range, initialization pressure levels, and desired approximate physical spacing (<code>spacing_km</code>).</li>
+                    <li><strong>Latitude Spacing (<code>Δlat</code> in degrees):</strong>
+                        <div class="formula">
+                            <code>deg_per_km_lat ≈ 1 / 111.0</code> (approx. km per degree latitude)<br>
+                            <code>Δlat = spacing_km * deg_per_km_lat</code>
+                        </div>
+                        This results in a roughly constant physical spacing in the latitudinal direction.
+                    </li>
+                    <li><strong>Longitude Spacing (<code>Δlon</code> in degrees):</strong>
+                        <div class="formula">
+                            <code>mid_lat_rad = radians((lat_start + lat_end) / 2)</code><br>
+                            <code>deg_per_km_lon_at_mid_lat ≈ 1 / (111.0 * cos(mid_lat_rad))</code><br>
+                            <code>Δlon = spacing_km * deg_per_km_lon_at_mid_lat</code>
+                        </div>
+                        This calculates a fixed degree spacing for longitude based on the cosine of the mid-latitude of the *entire initialization domain*.
+                    </li>
+                    <li><strong>Particle Placement:</strong> <code>np.meshgrid</code> (or equivalent logic) is used to create a grid of (lat, lon, pressure) points. Each point becomes an initial particle position.</li>
+                    <li><strong>Near-Pole Density:</strong> Because a single <code>Δlon</code> (in degrees) is used across all latitudes within the initialization domain, particles will be physically closer together (in kilometers) near the poles of the domain compared to its equator. This is an inherent characteristic of using a fixed degree spacing for longitude on a sphere.</li>
+                </ul>
+            </section>
+
+            <section id="simulation-loop">
+                <h2>6. Core Simulation Loop (<code>HybridParticleTracker.run_simulation</code>)</h2>
+                <p>The main simulation loop orchestrates the particle tracking process over time.</p>
+                <div class="diagram-container"><img id="img-simulation-flowchart" src="./Hybrid Particle Tracker - System Documentation_files/flowchart3.jpg" alt="Main Simulation Loop Flowchart" style="max-width: 100%; height: auto;"></div>
+                <ol>
+                    <li><strong>Initialization/Resumption:</strong>
+                        <ul>
+                            <li>Attempts to load a checkpoint if <code>resume=True</code>. If successful, particle states and the last completed simulation step are restored.</li>
+                            <li>If no checkpoint is found or resumption is disabled, new particles are initialized. The initial state is saved and plotted.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Time Management:</strong>
+                        <ul>
+                            <li>The loop iterates from a <code>loop_start_step</code> to a <code>loop_end_step</code>.</li>
+                            <li><code>loop_end_step</code> is determined by <code>initial_absolute_step_offset + (total_duration_hours / simulation_step_hours)</code>.</li>
+                            <li><code>initial_absolute_step_offset</code> accounts for any <code>simulation_start_hour</code> offset.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Initial Data Load:</strong> Loads velocity data for the current (<code>current_data_hour</code>) and next (<code>next_data_hour</code>) data intervals required for the first simulation step. Interpolators (<code>interp_curr</code>, <code>interp_next</code>) are created.</li>
+                    <li><strong>Per Timestep:</strong>
+                        <ol>
+                            <li><strong>Data Interval Update (if needed):</strong> If the simulation time crosses into a new data interval (e.g., every <code>data_interval_hours</code>), the velocity data is cycled:
+                                <ul>
+                                    <li><code>interp_curr</code> becomes the previous <code>interp_next</code>.</li>
+                                    <li>New data is loaded for the *new* <code>next_data_hour</code>, and <code>interp_next</code> is updated.</li>
+                                    <li>The simulation stops if required data cannot be loaded.</li>
+                                    <li>If the simulation reaches the end of its configured duration and no more "next" data is needed, <code>interp_curr</code> is used for <code>interp_next</code>.</li>
+                                </ul>
+                            </li>
+                            <li><strong>Temporal Interpolation Factor (<code>α</code>):</strong> Calculated to determine the particle's position in time relative to the <code>current_data_hour</code> and <code>next_data_hour</code>.
+                                <div class="formula">
+                                    <code>time_into_current_data_interval = current_sim_hours_elapsed - current_data_hour</code><br>
+                                    <code>α = clip(time_into_current_data_interval / data_interval_hours, 0.0, 1.0)</code>
+                                </div>
+                            </li>
+                            <li><strong>Particle Update:</strong> Calls <code>update_particles</code> (which may use the C++ engine or Python fallback) to advect particles using the RK4 method.</li>
+                            <li><strong>Scalar Transport (q, t):</strong> If specific humidity (q) and temperature (t) data are available (primarily in API mode), their values at particle locations are interpolated using a similar temporal factor <code>α_for_scalars</code>.</li>
+                            <li><strong>Output:</strong> If the current simulation time meets the <code>output_interval_hours</code>, particle positions (and q/t values if available) are saved to CSV or NetCDF, and a plot is generated.</li>
+                            <li><strong>Checkpointing:</strong> If the current simulation step meets the <code>checkpoint_interval_hours</code>, the current particle state and simulation step are saved.</li>
+                        </ol>
+                    </li>
+                    <li><strong>Final Save:</strong> After the loop finishes, the final particle state is saved and plotted. A final checkpoint is also created.</li>
+                </ol>
+            </section>
+
+            <section id="velocity-interpolation">
+                <h2>7. Velocity Interpolation</h2>
+                <p>To determine the velocity at a particle's exact location and time, spatial and temporal interpolation are performed.</p>
+                <div class="diagram-container"><img id="img-velocity-interpolation-concept" src="./Hybrid Particle Tracker - System Documentation_files/Velocity_Interpolation.png" alt="Velocity Interpolation Concept Diagram"></div>
+
+                <h3 id="spatial-interpolation">7.1. Spatial Interpolation (Trilinear)</h3>
+                <p>Velocity components (u, v, w) are typically available on a 3D regular grid (latitude, longitude, pressure). Trilinear interpolation is used to estimate the velocity at an arbitrary point (particle location) within a grid cell. This is implemented in both C++ (<code>RegularGrid3DInterpolator</code>) and Python (using <code>scipy.interpolate.RegularGridInterpolator</code>).</p>
+                <div class="diagram-container"><iframe id="iframe-spatial-interpolation" src="./Hybrid Particle Tracker - System Documentation_files/Spatial interpolation.html" title="Trilinear Spatial Interpolation Diagram"></iframe></div>
+                <p>The formula for trilinear interpolation involves linearly interpolating along one axis (e.g., x), then using those results to interpolate along the second axis (e.g., y), and finally using those results to interpolate along the third axis (e.g., z). It can be expressed as a weighted average of the values at the 8 corners of the grid cell enclosing the point.</p>
+                <p class="note">The C++ and Scipy interpolators require input coordinate arrays (latitude, longitude, pressure) to be sorted in ascending order. They handle points outside the grid bounds by using a specified <code>fill_value</code> (typically 0.0 for velocities, or NaN for scalars like q, t).</p>
+
+                <h3 id="temporal-interpolation">7.2. Temporal Interpolation</h3>
+                <p>Since particle positions are updated at time steps (<code>dt_seconds</code>) that may fall between the times for which full velocity fields are available (<code>data_interval_hours</code>), linear temporal interpolation is used.</p>
+                <div class="diagram-container"><iframe id="iframe-temporal-interpolation" src="./Hybrid Particle Tracker - System Documentation_files/Temporal_interpolation_diagram.html" title="Temporal Interpolation Diagram"></iframe></div>
+                <p>If <code>V_curr</code> is the velocity field at <code>current_data_hour</code> and <code>V_next</code> is the field at <code>next_data_hour</code>, the velocity <code>V</code> at an intermediate time (represented by the factor <code>α</code>) is:</p>
+                <div class="formula">
+                    <code>V(t) = (1 - α) * V_curr + α * V_next</code>
+                </div>
+                <p>Where <code>α</code> is calculated as described in the simulation loop section. This is applied independently to u, v, and w components after they have been spatially interpolated.</p>
+            </section>
+
+            <section id="particle-advection-rk4">
+                <h2>8. Particle Advection (Runge-Kutta 4th Order)</h2>
+                <p>The particle's new position is calculated by integrating its velocity over the simulation time step (<code>dt_seconds</code>). The Runge-Kutta 4th order (RK4) method is employed for its balance of accuracy and computational cost. This is implemented in <code>RK4Integrator.cpp</code> and has a Python fallback in <code>particle_tracker.py</code>.</p>
+                <div class="diagram-container"><iframe id="iframe-rk4-advection" src="./Hybrid Particle Tracker - System Documentation_files/rk4_diagram.html" title="RK4 Advection Method Diagram"></iframe></div>
+                <p>Given a particle's current position <code>P<sub>n</sub> = (lat<sub>n</sub>, lon<sub>n</sub>, pressure<sub>n</sub>)</code> at time <code>t<sub>n</sub></code>, its new position <code>P<sub>n+1</sub></code> at <code>t<sub>n</sub> + dt</code> is found by:
+                </p><div class="formula">
+                    <code>k<sub>1</sub> = dt ⋅ f(t<sub>n</sub>, P<sub>n</sub>, α<sub>n</sub>)</code><br>
+                    <code>k<sub>2</sub> = dt ⋅ f(t<sub>n</sub> + dt/2, P<sub>n</sub> + k<sub>1</sub>/2, α<sub>n+dt/2</sub>)</code><br>
+                    <code>k<sub>3</sub> = dt ⋅ f(t<sub>n</sub> + dt/2, P<sub>n</sub> + k<sub>2</sub>/2, α<sub>n+dt/2</sub>)</code><br>
+                    <code>k<sub>4</sub> = dt ⋅ f(t<sub>n</sub> + dt, P<sub>n</sub> + k<sub>3</sub>, α<sub>n+dt</sub>)</code><br>
+                    <code>P<sub>n+1</sub> = P<sub>n</sub> + (k<sub>1</sub> + 2⋅k<sub>2</sub> + 2⋅k<sub>3</sub> + k<sub>4</sub>) / 6</code>
+                </div>
+                Where:
+                <ul>
+                    <li><code>dt</code> is <code>dt_seconds</code>.</li>
+                    <li><code>f(t, P, α)</code> is the function that returns the velocity derivatives (dlat/dt, dlon/dt, dp/dt) at position <code>P</code> and time corresponding to temporal interpolation factor <code>α</code>.</li>
+                    <li><code>α_n, α_{n+dt/2}, α_{n+dt}</code> are the temporal interpolation factors calculated for the respective sub-steps of RK4. For example:
+                        <div class="formula"><code>α<sub>substep</sub> = initial_alpha_for_step + time_fraction_into_dt ⋅ (dt_seconds / (data_interval_hours ⋅ 3600.0))</code></div>
+                        (<code>time_fraction_into_dt</code> is 0.0 for k1, 0.5 for k2/k3, 1.0 for k4).
+                    </li>
+                </ul>
+
+                <h3 id="velocity-derivatives">8.1. Velocity Derivatives (<code>get_velocity</code> / <code>get_velocity_derivatives</code>)</h3>
+                <p>The function <code>f</code> involves:
+                </p><ol>
+                    <li>Spatially and temporally interpolating u (m/s), v (m/s), and w (Pa/s) at the given particle position and sub-step time (using the sub-step <code>α</code>).</li>
+                    <li>Converting these meteorological velocities into coordinate derivatives:</li>
+                </ol>
+                <div class="formula">
+                    <code>dlat/dt (deg/s) = (v / R_earth) * (180 / π)</code><br>
+                    <code>dlon/dt (deg/s) = (u / (R_earth * max(cos(lat_rad), MIN_COS_FACTOR))) * (180 / π)</code><br>
+                    <code>dp/dt (hPa/s) = w_Pa_s / 100.0</code>
+                </div>
+                Where:
+                <ul>
+                    <li><code>R_earth</code> is the Earth's radius (approx. 6371000 m).</li>
+                    <li><code>lat_rad</code> is latitude in radians.</li>
+                    <li><code>MIN_COS_FACTOR</code> (e.g., <code>cos(85 degrees)</code>) is used to prevent division by zero or excessively large dlon/dt near the poles (Polar Singularity Handling). If <code>R_earth * max(cos(lat_rad), MIN_COS_FACTOR)</code> is below a small threshold (e.g., 1e-6 in C++), dlon/dt is set to 0.</li>
+                </ul>
+                <p></p>
+            </section>
+
+            <section id="boundary-conditions">
+                <h2>9. Boundary Conditions (Global Simulations)</h2>
+                <p>For simulations on a global domain, specific boundary conditions are applied after each RK4 step to ensure particles remain within physical limits:</p>
+                <ul>
+                    <li><strong>Latitude Clamping:</strong> The new latitude is clamped to the range [-90, 90] degrees.
+                        <div class="formula"><code>new_lat = clamp(new_lat, -90.0, 90.0)</code></div>
+                    </li>
+                    <li><strong>Longitude Wrapping:</strong> The new longitude is wrapped to a standard range, typically [-180, 180) degrees.
+                        <div class="formula"><code>new_lon = new_lon - floor((new_lon + 180.0) / 360.0) * 360.0</code></div>
+                    </li>
+                    <li><strong>Pressure Clamping:</strong> The new pressure is clamped to the minimum and maximum pressure levels of the input data grid.
+                        <div class="formula"><code>new_pressure = clamp(new_pressure, pressure_min_data, pressure_max_data)</code></div>
+                    </li>
+                </ul>
+            </section>
+
+            <section id="scalar-transport">
+                <h2>10. Scalar Transport (Specific Humidity 'q' and Temperature 't')</h2>
+                <p>If specific humidity (q) and temperature (t) data are available (primarily in API mode), their values at the new particle positions are calculated for output.</p>
+                <ul>
+                    <li>Data for q and t are loaded similarly to u, v, w components.</li>
+                    <li>Scipy <code>RegularGridInterpolator</code> objects are created for q and t.</li>
+                    <li>At each output step, after particles have been advected, the q and t values are interpolated at the final particle positions <code>(lat, lon, pressure)</code>.</li>
+                    <li>Both spatial (trilinear) and temporal interpolation are applied:
+                        <div class="formula">
+                            <code>S_particle = (1 - α_scalars) * S_curr_interpolated_at_particle + α_scalars * S_next_interpolated_at_particle</code>
+                        </div>
+                        Where <code>S</code> is the scalar (q or t), and <code>α_scalars</code> is the temporal interpolation factor corresponding to the particle's time at the end of the advection step, relative to the <code>current_data_hour</code> and <code>next_data_hour</code>.
+                    </li>
+                    <li>The fill value for q and t interpolators is typically <code>np.nan</code> to distinguish missing scalar data from a value of zero.</li>
+                </ul>
+            </section>
+
+            <section id="output">
+                <h2>11. Output (<code>HybridParticleTracker.save_particles</code>)</h2>
+                <p>Particle data is saved at specified <code>output_interval_hours</code>.</p>
+                <ul>
+                    <li><strong>CSV Format:</strong>
+                        <ul>
+                            <li>A CSV file is created for each output time.</li>
+                            <li>Columns typically include: 'id', 'latitude', 'longitude', 'pressure', and optionally 'specific_humidity', 'temperature'.</li>
+                        </ul>
+                    </li>
+                    <li><strong>NetCDF Format:</strong>
+                        <ul>
+                            <li>An Xarray Dataset is created with particle data.</li>
+                            <li>Coordinates: 'particle_id' and optionally 'time'.</li>
+                            <li>Data Variables: 'latitude', 'longitude', 'pressure', 'specific_humidity', 'temperature', with appropriate units and long names as attributes.</li>
+                            <li><code>_FillValue</code> (typically NaN for floats) and <code>dtype</code> are specified in the encoding for robust NetCDF writing.</li>
+                            <li>Global attributes like 'creation_date' and 'source_script' are included.</li>
+                            <li>Saved using <code>ds.to_netcdf(filename, engine="netcdf4", encoding=...)</code>.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </section>
+
+            <section id="visualization">
+                <h2>12. Visualization (<code>ParticleVisualizer</code>)</h2>
+                <p>The <code>ParticleVisualizer</code> class uses Matplotlib and Cartopy to create geographical plots.</p>
+                <ul>
+                    <li><strong>Particle Positions (<code>plot_particles</code>):</strong>
+                        <ul>
+                            <li>Displays particles as scatter points on a map for a given time.</li>
+                            <li>Map features like coastlines and gridlines are added using Cartopy.</li>
+                            <li>Plot extent can be configured via <code>plot_lat_range</code> and <code>plot_lon_range</code> in the main configuration.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Particle Trajectories (<code>plot_particle_trajectories</code>):</strong>
+                        <ul>
+                            <li>If trajectory data is collected, this method plots lines representing the paths of selected particles. (Note: Trajectory collection logic is not explicitly detailed in the provided <code>particle_tracker.py</code> but this method exists in <code>visualization.py</code>).</li>
+                        </ul>
+                    </li>
+                    <li><strong>Pressure Distribution (<code>plot_pressure_distribution</code>):</strong>
+                        <ul>
+                            <li>Generates a histogram showing the distribution of particles across different pressure levels.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </section>
+
+            <section id="cpp-engine">
+                <h2>13. C++ Engine (<code>particle_engine_cpp</code>)</h2>
+                <p>The C++ engine is designed for performance-critical parts of the simulation.</p>
+                <ul>
+                    <li><strong>Pybind11:</strong> Used to create Python bindings for the C++ classes, allowing them to be called directly from Python.</li>
+                    <li><strong><code>ParticleEngine</code> (C++ class):</strong>
+                        <ul>
+                            <li>Main interface exposed to Python.</li>
+                            <li>Contains methods like <code>initialize_particles</code>, <code>create_interpolator</code>, and <code>update_particles</code> (which takes a batch of particles).</li>
+                        </ul>
+                    </li>
+                    <li><strong><code>RegularGrid3DInterpolator</code> (C++ class):</strong>
+                        <ul>
+                            <li>Stores the 3D gridded data (e.g., u, v, w) and its coordinate axes.</li>
+                            <li>Implements trilinear interpolation (<code>interpolate(lat, lon, pressure)</code> method).</li>
+                            <li>Handles boundary checks and fill values. Coordinates are internally normalized to `[0,1]` for interpolation.</li>
+                        </ul>
+                    </li>
+                    <li><strong><code>RK4Integrator</code> (C++ class):</strong>
+                        <ul>
+                            <li>Implements the RK4 algorithm (<code>integrate_particle</code> method for a single particle, and <code>integrate_batch</code> for multiple).</li>
+                            <li>Its <code>get_velocity</code> method performs the temporal and spatial interpolation (using passed <code>RegularGrid3DInterpolator</code> objects) and calculates coordinate derivatives, including polar singularity handling.</li>
+                            <li>Applies global boundary conditions (latitude clamping, longitude wrapping, pressure clamping) after calculating the new position.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </section>
+
+            <section id="build-process">
+                <h2>14. Build Process (<code>setup.py</code>)</h2>
+                <p>The C++ components are compiled into a Python extension module using <code>setuptools</code> and <code>pybind11</code>.</p>
+                <ul>
+                    <li><code>setup.py</code> defines a <code>Pybind11Extension</code> named <code>particle_engine_cpp</code>.</li>
+                    <li>It lists the C++ source files (<code>particle_engine.cpp</code>, <code>interpolator.cpp</code>, <code>rk4_integrator.cpp</code>).</li>
+                    <li>Includes paths to Pybind11 and NumPy headers.</li>
+                    <li>Specifies C++ standard (e.g., C++17).</li>
+                    <li>Defines macros like <code>_USE_MATH_DEFINES</code> for Windows compatibility (to get <code>M_PI</code>).</li>
+                    <li>Running <code>python setup.py build_ext --inplace</code> or <code>pip install .</code> compiles the C++ code and makes the <code>particle_engine_cpp</code> module importable in Python.</li>
+                </ul>
+            </section>
+            
+            <section id="testing">
+                <h2>15. Testing and Consistency (<code>test_simulation_consistency.py</code>)</h2>
+                <p>A dedicated test script, <code>test_simulation_consistency.py</code>, is provided to compare the results of the C++ RK4 implementation against a pure Python/Scipy RK4 implementation.</p>
+                <ul>
+                    <li>It initializes a small number of particles and loads a few time steps of data.</li>
+                    <li>It creates both C++ interpolators (via the C++ engine) and Scipy <code>RegularGridInterpolator</code> objects using the same underlying data.</li>
+                    <li>For each simulation step:
+                        <ul>
+                            <li>Particles are advected using the C++ engine.</li>
+                            <li>Particles are advected using a Python RK4 implementation that mirrors the C++ logic but uses Scipy interpolators.</li>
+                        </ul>
+                    </li>
+                    <li>The positions and velocities (interpolated at the new positions) from both methods are compared.</li>
+                    <li>Differences are printed, allowing verification that the C++ and Python advection schemes produce very similar results (within floating-point precision limits).</li>
+                    <li>This is crucial for ensuring the correctness of the optimized C++ engine.</li>
+                </ul>
+            </section>
+
+            <section id="conclusion">
+                <h2>16. Conclusion</h2>
+                <p>The Hybrid Parcel Tracker provides a robust and efficient framework for Lagrangian parcel simulations. By combining C++ for core computations and Python for high-level control and data management, it aims to offer both performance and flexibility. The system includes detailed data handling for CSV and API sources, a well-defined parcel advection scheme (RK4) with appropriate boundary conditions, and visualization capabilities.</p>
+            </section>
+        </div>
+    </div>
+</div>
+
+
+</body></html>

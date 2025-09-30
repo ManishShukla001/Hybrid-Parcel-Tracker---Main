@@ -1,0 +1,5 @@
+include README.md
+include requirements.txt
+include src/python/*.py
+recursive-include src/cpp *.h *.cpp
+recursive-include examples *.py

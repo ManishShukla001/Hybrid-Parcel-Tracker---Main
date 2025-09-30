@@ -1,0 +1,329 @@
+
+<!-- saved from url=(0087)file:///D:/ERA5/Particle_Codes/Hybrid/New_Hybrid2/diagrams/Spatial%20interpolation.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head><body xmlns="http://www.w3.org/1999/xhtml"><svg viewBox="-200 -200 1400 1150" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto;">
+    <!-- Further increased viewBox for the larger scaled diagram -->
+    <defs>
+        <marker id="axisArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"></path>
+        </marker>
+    </defs>
+
+    <style>
+        /* Styles will have stroke-width set by JS for dynamic elements */
+        .cube-edge { stroke: #555; }
+        .projection-line { stroke: #7f8c8d; stroke-dasharray: 4.5px, 4.5px; } /* Base 3,3 * 1.5 */
+        .interpolation-line { stroke: #1abc9c; stroke-dasharray: 6px, 3px; } /* Base 4,2 * 1.5 */
+
+        .vertex-dot { fill: #3498db; stroke: #2980b9; }
+        .point-p { fill: #e74c3c; stroke: #c0392b; }
+        .interp-point { fill: #2ecc71; stroke: #27ae60; }
+        
+        /* Scaled font sizes */
+        .label { font-family: Arial, sans-serif; font-size: 21px; fill: #333; }
+        .label-vertex { font-family: "Courier New", Courier, monospace; font-size: 20px; fill: #2c3e50; }
+        .label-interp { font-family: Arial, sans-serif; font-size: 20px; font-style: italic; fill: #16a085; }
+        .label-p-coord { font-family: "Georgia", serif; font-size: 22px; font-style: italic; fill: #8e44ad; }
+        
+        .formula-text { font-family: "Times New Roman", Times, serif; font-size: 24px; fill: #34495e; } 
+        .formula-title { font-family: Arial, sans-serif; font-size: 25px; font-weight: bold; fill: #2c3e50; }
+        
+        .axis-label { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #000; }
+        /* Axis line stroke-width will be set in JS */
+    </style>
+
+    <rect x="-200" y="-200" width="1400" height="1150" fill="#f8f9fa"></rect>
+
+    <text x="550" y="-150" text-anchor="middle" font-size="30px" font-weight="bold" fill="#2c3e50">Trilinear Interpolation within a 3D Grid Cell</text>
+
+    <foreignobject x="200" y="-100" width="700" height="100">
+        
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px; font-family: Arial; font-size: 19px;">
+                <div><label for="hRotTri">Yaw:</label><input type="range" id="hRotTri" min="-180" max="180" value="25" step="5"><span id="hRotTriVal">25</span>°</div>
+                <div><label for="vRotTri">Pitch:</label><input type="range" id="vRotTri" min="-80" max="80" value="20" step="5"><span id="vRotTriVal">20</span>°</div>
+                <button id="redrawButtonTri" style="padding: 7px 15px; font-size: 18px;">Redraw</button>
+            </div>
+        
+    </foreignobject>
+
+    <g id="main-diagram-group" transform="translate(0, 80)">
+        <g id="diagram-content-tri"><circle cx="495.10685758878515" cy="413.64415669838695" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="hanging" x="512.8456881263903" y="421.64415669838695" class="label-vertex">V₁₁₀</text><line x1="495.10685758878515" y1="413.64415669838695" x2="495.10685758878515" y2="131.7363704626144" class="cube-edge" stroke-width="2.25"></line><circle cx="372.7553063388374" cy="433.15759108948777" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="end" dominant-baseline="alphabetic" x="360.7553063388374" y="421.15759108948777" class="label-interp">c10</text><line x1="223.21452147779016" y1="457.0073442341666" x2="495.10685758878515" y2="413.64415669838695" class="cube-edge" stroke-width="2.25"></line><circle cx="495.10685758878515" cy="131.7363704626144" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="511.2391690693262" y="123.73637046261439" class="label-vertex">V₁₁₁</text><circle cx="223.21452147779016" cy="457.0073442341666" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="hanging" x="237.47049608417836" y="467.9967567763372" class="label-vertex">V₀₁₀</text><line x1="423.46949774772133" y1="385.7823175250894" x2="372.7553063388374" y2="433.15759108948777" class="projection-line" stroke-width="1.5"></line><line x1="621.892336110995" y1="506.63681246422027" x2="495.10685758878515" y2="413.64415669838695" class="cube-edge" stroke-width="2.25"></line><circle cx="423.46949774772133" cy="470.3546533958211" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="435.46949774772133" y="458.3546533958211" class="label-interp">c0</text><circle cx="372.7553063388374" cy="151.2498048537152" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="end" dominant-baseline="alphabetic" x="360.7553063388374" y="139.2498048537152" class="label-interp">c11</text><line x1="223.21452147779016" y1="175.09955799839406" x2="495.10685758878515" y2="131.7363704626144" class="cube-edge" stroke-width="2.25"></line><line x1="223.21452147779016" y1="457.0073442341666" x2="223.21452147779016" y2="175.09955799839406" class="cube-edge" stroke-width="2.25"></line><line x1="423.46949774772133" y1="385.7823175250894" x2="423.46949774772133" y2="470.3546533958211" class="projection-line" stroke-width="1.5"></line><line x1="423.46949774772133" y1="385.7823175250894" x2="372.7553063388374" y2="151.2498048537152" class="projection-line" stroke-width="1.5"></line><line x1="499.54078486104726" y1="526.1502468553211" x2="372.7553063388374" y2="433.15759108948777" class="interpolation-line" stroke-width="1.7999999999999998"></line><circle cx="423.46949774772133" cy="385.7823175250894" r="6.75" class="point-p" stroke-width="1.5"></circle><text x="437.8694977477213" y="368.9823175250894" class="label">P</text><line x1="423.46949774772133" y1="470.3546533958211" x2="423.46949774772133" y2="188.4468671600486" class="interpolation-line" stroke-width="1.7999999999999998"></line><circle cx="223.21452147779016" cy="175.09955799839406" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="235.3209748317441" y="161.7791305582352" class="label-vertex">V₀₁₁</text><line x1="423.46949774772133" y1="385.7823175250894" x2="423.46949774772133" y2="188.4468671600486" class="projection-line" stroke-width="1.5"></line><line x1="621.892336110995" y1="224.72902622844776" x2="495.10685758878515" y2="131.7363704626144" class="cube-edge" stroke-width="2.25"></line><line x1="350" y1="550" x2="223.21452147779016" y2="457.0073442341666" class="cube-edge" stroke-width="2.25"></line><line x1="423.46949774772133" y1="385.7823175250894" x2="499.54078486104726" y2="526.1502468553211" class="projection-line" stroke-width="1.5"></line><circle cx="621.892336110995" cy="506.63681246422027" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="hanging" x="639.1248382752539" y="514.6368124642203" class="label-vertex">V₁₀₀</text><circle cx="423.46949774772133" cy="188.4468671600486" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="435.46949774772133" y="176.4468671600486" class="label-interp">c1</text><line x1="499.54078486104726" y1="244.24246061954864" x2="372.7553063388374" y2="151.2498048537152" class="interpolation-line" stroke-width="1.7999999999999998"></line><text x="281.96435644333707" y="529.60220327025" class="label-p-coord" text-anchor="middle" dominant-baseline="middle">yd</text><line x1="423.46949774772133" y1="385.7823175250894" x2="499.54078486104726" y2="244.24246061954864" class="projection-line" stroke-width="1.5"></line><line x1="621.892336110995" y1="506.63681246422027" x2="621.892336110995" y2="224.72902622844776" class="cube-edge" stroke-width="2.25"></line><circle cx="499.54078486104726" cy="526.1502468553211" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="end" dominant-baseline="alphabetic" x="487.54078486104726" y="514.1502468553211" class="label-interp">c00</text><line x1="350" y1="550" x2="621.892336110995" y2="506.63681246422027" class="cube-edge" stroke-width="2.25"></line><text x="424.77039243052366" y="526.0751234276606" class="label-p-coord" text-anchor="middle" dominant-baseline="middle">xd</text><line x1="350" y1="268.0922137642275" x2="223.21452147779016" y2="175.09955799839406" class="cube-edge" stroke-width="2.25"></line><circle cx="621.892336110995" cy="224.72902622844776" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="639.5030665092922" y="216.72902622844776" class="label-vertex">V₁₀₁</text><circle cx="350" cy="550" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="hanging" x="364.3739244104206" y="560.8346802926304" class="label-vertex">V₀₀₀</text><text x="327.5" y="507.7138320646341" class="label-p-coord" text-anchor="middle" dominant-baseline="middle">zd</text><circle cx="499.54078486104726" cy="244.24246061954864" r="4.5" class="interp-point" stroke-width="1.5"></circle><text text-anchor="end" dominant-baseline="alphabetic" x="487.54078486104726" y="232.24246061954864" class="label-interp">c01</text><line x1="350" y1="268.0922137642275" x2="621.892336110995" y2="224.72902622844776" class="cube-edge" stroke-width="2.25"></line><line x1="350" y1="550" x2="350" y2="268.0922137642275" class="cube-edge" stroke-width="2.25"></line><circle cx="350" cy="268.0922137642275" r="5.25" class="vertex" stroke-width="1.5"></circle><text text-anchor="start" dominant-baseline="alphabetic" x="367.41098549106846" y="260.0922137642275" class="label-vertex">V₀₀₁</text><g><line x1="350" y1="550" x2="703.4600369442935" y2="493.6278562034864" stroke="red" stroke-width="2.25" marker-end="url(#axisArrow)"></line><text x="715.3102721482148" y="491.7379023385089" class="axis-label" fill="red" text-anchor="start" dominant-baseline="alphabetic">x</text><line x1="350" y1="550" x2="185.17887792112722" y2="429.1095475044166" stroke="green" stroke-width="2.25" marker-end="url(#axisArrow)"></line><text x="175.5026235581719" y="422.01235781388493" class="axis-label" fill="green" text-anchor="end" dominant-baseline="alphabetic">y</text><line x1="350" y1="550" x2="350" y2="183.51987789349573" stroke="blue" stroke-width="2.25" marker-end="url(#axisArrow)"></line><text x="350" y="171.51987789349573" class="axis-label" fill="blue" text-anchor="middle" dominant-baseline="alphabetic">z</text></g></g>
+        <g id="formula-group-tri"><text x="900" y="50" class="formula-title" text-anchor="middle">Interpolation Steps:</text><text x="800" y="102.5" class="formula-text" text-anchor="start">1. Along x (at cell faces):</text><text x="800" y="155" class="formula-text" text-anchor="start">   c₀₀ = (1-xd)V₀₀₀ + xd·V₁₀₀</text><text x="800" y="200" class="formula-text" text-anchor="start">   c₁₀ = (1-xd)V₀₁₀ + xd·V₁₁₀</text><text x="800" y="245" class="formula-text" text-anchor="start">   c₀₁ = (1-xd)V₀₀₁ + xd·V₁₀₁</text><text x="800" y="290" class="formula-text" text-anchor="start">   c₁₁ = (1-xd)V₀₁₁ + xd·V₁₁₁</text><text x="800" y="380" class="formula-text" text-anchor="start">2. Along y (using results):</text><text x="800" y="432.5" class="formula-text" text-anchor="start">   c₀ = (1-yd)c₀₀ + yd·c₁₀</text><text x="800" y="477.5" class="formula-text" text-anchor="start">   c₁ = (1-yd)c₀₁ + yd·c₁₁</text><text x="800" y="567.5" class="formula-text" text-anchor="start">3. Along z (final interpolation):</text><text x="800" y="620" class="formula-text" text-anchor="start">   P = (1-zd)c₀ + zd·c₁</text></g>
+        
+        <script>
+            (function() {
+                const diagramContentGroup = document.getElementById('diagram-content-tri');
+                const formulaGroup = document.getElementById('formula-group-tri');
+                const ns = "http://www.w3.org/2000/svg";
+
+                const hRotSlider = document.getElementById('hRotTri'); /* ... get other sliders ... */
+                const vRotSlider = document.getElementById('vRotTri');
+                const hRotValSpan = document.getElementById('hRotTriVal');
+                const vRotValSpan = document.getElementById('vRotTriVal');
+                const redrawButton = document.getElementById('redrawButtonTri');
+
+                let currentHRotDeg = parseFloat(hRotSlider.value);
+                let currentVRotDeg = parseFloat(vRotSlider.value);
+                
+                const displayScaleFactor = 1.5; // How much bigger everything should appear
+
+                function drawDiagram() {
+                    while (diagramContentGroup.firstChild) { diagramContentGroup.removeChild(diagramContentGroup.firstChild); }
+                    while (formulaGroup.firstChild) { formulaGroup.removeChild(formulaGroup.firstChild); }
+
+                    const hRotRad = currentHRotDeg * Math.PI / 180;
+                    const vRotRad = currentVRotDeg * Math.PI / 180;
+                    
+                    const baseWorldCellSize = 200; // The fundamental size in "world units"
+                    // For projection, we use baseWorldCellSize. The displayScaleFactor scales the output.
+                    
+                    const pRelative = { xd: 0.55, yd: 0.6, zd: 0.3 }; 
+                    const originScreen = { x: 350, y: 550 }; // Adjusted for larger viewBox
+                    
+                    // --- Visual parameters (base screen sizes before displayScaleFactor) ---
+                    const baseParticleRad = 4;
+                    const baseInterpPointRad = 3;
+                    const baseVertexRad = 3.5;
+                    const basePointPRad = 4.5;
+
+                    const baseCubeEdgeStrokeWidth = 1.5;
+                    const baseProjectionStrokeWidth = 1;
+                    const baseInterpolationStrokeWidth = 1.2;
+                    const baseAxisStrokeWidth = 1.5;
+                    const basePointStrokeWidth = 1;
+                    const baseLabelOffset = 10;
+
+
+                    function projectToScreen(wx, wy, wz) {
+                        const x_y = wx * Math.cos(hRotRad) - wy * Math.sin(hRotRad);
+                        const y_y = wx * Math.sin(hRotRad) + wy * Math.cos(hRotRad);
+                        const z_y = wz;
+                        const x_p = x_y;
+                        const y_p_depth = y_y * Math.cos(vRotRad) - z_y * Math.sin(vRotRad);
+                        const z_p_screenY = y_y * Math.sin(vRotRad) + z_y * Math.cos(vRotRad);
+                        
+                        // Apply displayScaleFactor here to scale the projected world onto the screen
+                        const screenX = originScreen.x + x_p * displayScaleFactor;
+                        const screenY = originScreen.y - z_p_screenY * displayScaleFactor; // SVG Y is inverted
+                        return { x: screenX, y: screenY, depth: y_p_depth };
+                    }
+
+                    const verticesData = {
+                        V000: { x: 0, y: 0, z: 0, label: "V₀₀₀" }, 
+                        V100: { x: baseWorldCellSize, y: 0, z: 0, label: "V₁₀₀" },
+                        V010: { x: 0, y: baseWorldCellSize, z: 0, label: "V₀₁₀" }, 
+                        V001: { x: 0, y: 0, z: baseWorldCellSize, label: "V₀₀₁" },
+                        V110: { x: baseWorldCellSize, y: baseWorldCellSize, z: 0, label: "V₁₁₀" }, 
+                        V101: { x: baseWorldCellSize, y: 0, z: baseWorldCellSize, label: "V₁₀₁" },
+                        V011: { x: 0, y: baseWorldCellSize, z: baseWorldCellSize, label: "V₀₁₁" }, 
+                        V111: { x: baseWorldCellSize, y: baseWorldCellSize, z: baseWorldCellSize, label: "V₁₁₁" }
+                    };
+                    // ... (projectedVertices, pWorld, pProjected, cXX_w, projectedInterp calculations use baseWorldCellSize)
+                    const projectedVertices = {};
+                    for (const key in verticesData) {
+                        projectedVertices[key] = projectToScreen(verticesData[key].x, verticesData[key].y, verticesData[key].z);
+                    }
+
+                    const pWorld = { x: pRelative.xd * baseWorldCellSize, y: pRelative.yd * baseWorldCellSize, z: pRelative.zd * baseWorldCellSize };
+                    const pProjected = projectToScreen(pWorld.x, pWorld.y, pWorld.z);
+
+                    const c00_w = { x: pWorld.x, y: 0, z: 0 };        const c10_w = { x: pWorld.x, y: baseWorldCellSize, z: 0 };
+                    const c01_w = { x: pWorld.x, y: 0, z: baseWorldCellSize }; const c11_w = { x: pWorld.x, y: baseWorldCellSize, z: baseWorldCellSize };
+                    const c0_w  = { x: pWorld.x, y: pWorld.y, z: 0 }; const c1_w  = { x: pWorld.x, y: pWorld.y, z: baseWorldCellSize };
+                    
+                    const projectedInterp = {
+                        c00: projectToScreen(c00_w.x, c00_w.y, c00_w.z), c10: projectToScreen(c10_w.x, c10_w.y, c10_w.z),
+                        c01: projectToScreen(c01_w.x, c01_w.y, c01_w.z), c11: projectToScreen(c11_w.x, c11_w.y, c11_w.z),
+                        c0:  projectToScreen(c0_w.x,  c0_w.y,  c0_w.z),  c1:  projectToScreen(c1_w.x,  c1_w.y,  c1_w.z)
+                    };
+
+
+                    const elementsToDraw = [];
+                    function addLine(p1Proj, p2Proj, className, baseStrokeWidth, depth1, depth2) {
+                        elementsToDraw.push({type: 'line', class: className, strokeWidth: baseStrokeWidth * displayScaleFactor, x1:p1Proj.x, y1:p1Proj.y, x2:p2Proj.x, y2:p2Proj.y, depth:(depth1+depth2)/2});
+                    }
+                    
+                    const V = projectedVertices;
+                    addLine(V.V000, V.V100, 'cube-edge', baseCubeEdgeStrokeWidth, V.V000.depth, V.V100.depth); 
+                    addLine(V.V000, V.V010, 'cube-edge', baseCubeEdgeStrokeWidth, V.V000.depth, V.V010.depth);
+                    addLine(V.V100, V.V110, 'cube-edge', baseCubeEdgeStrokeWidth, V.V100.depth, V.V110.depth); 
+                    addLine(V.V010, V.V110, 'cube-edge', baseCubeEdgeStrokeWidth, V.V010.depth, V.V110.depth);
+                    addLine(V.V001, V.V101, 'cube-edge', baseCubeEdgeStrokeWidth, V.V001.depth, V.V101.depth); 
+                    addLine(V.V001, V.V011, 'cube-edge', baseCubeEdgeStrokeWidth, V.V001.depth, V.V011.depth);
+                    addLine(V.V101, V.V111, 'cube-edge', baseCubeEdgeStrokeWidth, V.V101.depth, V.V111.depth); 
+                    addLine(V.V011, V.V111, 'cube-edge', baseCubeEdgeStrokeWidth, V.V011.depth, V.V111.depth);
+                    addLine(V.V000, V.V001, 'cube-edge', baseCubeEdgeStrokeWidth, V.V000.depth, V.V001.depth); 
+                    addLine(V.V100, V.V101, 'cube-edge', baseCubeEdgeStrokeWidth, V.V100.depth, V.V101.depth);
+                    addLine(V.V010, V.V011, 'cube-edge', baseCubeEdgeStrokeWidth, V.V010.depth, V.V011.depth); 
+                    addLine(V.V110, V.V111, 'cube-edge', baseCubeEdgeStrokeWidth, V.V110.depth, V.V111.depth);
+
+                    const I = projectedInterp;
+                    addLine(I.c00, I.c10, 'interpolation-line', baseInterpolationStrokeWidth, I.c00.depth, I.c10.depth); 
+                    addLine(I.c01, I.c11, 'interpolation-line', baseInterpolationStrokeWidth, I.c01.depth, I.c11.depth); 
+                    addLine(I.c0, I.c1, 'interpolation-line', baseInterpolationStrokeWidth, I.c0.depth, I.c1.depth);     
+
+                    addLine(pProjected, I.c0, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c0.depth);
+                    addLine(pProjected, I.c1, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c1.depth);
+                    addLine(pProjected, I.c00, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c00.depth); 
+                    addLine(pProjected, I.c01, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c01.depth);
+                    addLine(pProjected, I.c10, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c10.depth);
+                    addLine(pProjected, I.c11, 'projection-line', baseProjectionStrokeWidth, pProjected.depth, I.c11.depth);
+
+                    for (const key in verticesData) {
+                        elementsToDraw.push({ type: 'vertex', ...projectedVertices[key], label: verticesData[key].label, radius: baseVertexRad * displayScaleFactor, pointStrokeWidth: basePointStrokeWidth * displayScaleFactor });
+                    }
+                    elementsToDraw.push({ type: 'point-p', ...pProjected, label: 'P', radius: basePointPRad * displayScaleFactor, pointStrokeWidth: basePointStrokeWidth * displayScaleFactor });
+                    for (const key in projectedInterp) {
+                        elementsToDraw.push({ type: 'interp-point', ...projectedInterp[key], label: key, radius: baseInterpPointRad * displayScaleFactor, pointStrokeWidth: basePointStrokeWidth * displayScaleFactor });
+                    }
+                    
+                    const v000_world = verticesData.V000; 
+                    const v000_screen = projectedVertices.V000; 
+                    const scaledLabelOffset = baseLabelOffset * displayScaleFactor;
+
+                    const Px_on_x_axis_world = { x: pWorld.x, y: v000_world.y, z: v000_world.z };
+                    const Px_on_x_axis_screen = projectToScreen(Px_on_x_axis_world.x, Px_on_x_axis_world.y, Px_on_x_axis_world.z);
+                    elementsToDraw.push({type: 'text', class: 'label-p-coord', 
+                                         x: (v000_screen.x + Px_on_x_axis_screen.x) / 2, 
+                                         y: (v000_screen.y + Px_on_x_axis_screen.y) / 2 + ( (Px_on_x_axis_screen.y &gt; v000_screen.y) ? 1.5*scaledLabelOffset : -0.8*scaledLabelOffset ),
+                                         text: 'xd', depth: (v000_screen.depth + Px_on_x_axis_screen.depth) / 2});
+
+                    const Py_on_y_axis_world = { x: v000_world.x, y: pWorld.y, z: v000_world.z };
+                    const Py_on_y_axis_screen = projectToScreen(Py_on_y_axis_world.x, Py_on_y_axis_world.y, Py_on_y_axis_world.z);
+                    elementsToDraw.push({type: 'text', class: 'label-p-coord', 
+                                         x: (v000_screen.x + Py_on_y_axis_screen.x) / 2 + ((v000_screen.x &lt; Py_on_y_axis_screen.x)? 0.8*scaledLabelOffset : -2*scaledLabelOffset),
+                                         y: (v000_screen.y + Py_on_y_axis_screen.y) / 2 + 0.5*scaledLabelOffset, 
+                                         text: 'yd', depth: (v000_screen.depth + Py_on_y_axis_screen.depth) / 2});
+
+                    const Pz_on_z_axis_world = { x: v000_world.x, y: v000_world.y, z: pWorld.z };
+                    const Pz_on_z_axis_screen = projectToScreen(Pz_on_z_axis_world.x, Pz_on_z_axis_world.y, Pz_on_z_axis_world.z);
+                     elementsToDraw.push({type: 'text', class: 'label-p-coord', 
+                                         x: (v000_screen.x + Pz_on_z_axis_screen.x) / 2 - 1.5*scaledLabelOffset, 
+                                         y: (v000_screen.y + Pz_on_z_axis_screen.y) / 2, 
+                                         text: 'zd', depth: (v000_screen.depth + Pz_on_z_axis_screen.depth) / 2});
+
+
+                    elementsToDraw.sort((a, b) =&gt; { /* ... depth sort same ... */ 
+                        if (a.depth &gt; b.depth) return -1; if (a.depth &lt; b.depth) return 1;
+                        const typeOrder = { 'line':0, 'interp-point':1, 'vertex':2, 'point-p':3, 'text': 4 };
+                        return (typeOrder[a.type] || 5) - (typeOrder[b.type] || 5);
+                    });
+
+                    elementsToDraw.forEach(el =&gt; {
+                        if (el.type === 'line') {
+                            const line = document.createElementNS(ns, "line");
+                            line.setAttribute("x1", el.x1); line.setAttribute("y1", el.y1);
+                            line.setAttribute("x2", el.x2); line.setAttribute("y2", el.y2);
+                            line.setAttribute("class", el.class);
+                            line.setAttribute("stroke-width", el.strokeWidth.toString()); // Set JS calculated stroke width
+                            diagramContentGroup.appendChild(line);
+                        } else if (el.type === 'vertex' || el.type === 'point-p' || el.type === 'interp-point') {
+                            const circle = document.createElementNS(ns, "circle");
+                            circle.setAttribute("cx", el.x); circle.setAttribute("cy", el.y);
+                            circle.setAttribute("r", el.radius.toString()); 
+                            circle.setAttribute("class", el.type);
+                            circle.setAttribute("stroke-width", el.pointStrokeWidth.toString()); 
+                            diagramContentGroup.appendChild(circle);
+                            
+                            const text = document.createElementNS(ns, "text");
+                            let labelDx = baseLabelOffset * 1.2, labelDy = -baseLabelOffset * 1.4; 
+                            if (el.label === "P") {labelDx *= 1.2; labelDy *= 1.2;}
+                            else if (el.label &amp;&amp; el.label.startsWith("V")) {
+                                const approxCubeCenterX = originScreen.x + (projectedVertices.V111.x - v000_screen.x)/2 - originScreen.x;
+                                const approxCubeCenterY = originScreen.y - ( (v000_screen.y - projectedVertices.V111.y)/2 );
+                                const labelDirX = el.x - approxCubeCenterX; 
+                                const labelDirY = el.y - approxCubeCenterY;
+                                const norm = Math.sqrt(labelDirX*labelDirX + labelDirY*labelDirY) || 1;
+                                labelDx = (labelDirX / norm) * baseLabelOffset * 1.8; 
+                                labelDy = (labelDirY / norm) * baseLabelOffset * 1.8;
+                                if (Math.abs(labelDx) &lt; baseLabelOffset*0.8 &amp;&amp; Math.abs(labelDy) &gt; Math.abs(labelDx) ) labelDx = labelDx &lt; 0 ? -baseLabelOffset*0.8 : baseLabelOffset*0.8;
+                                if (Math.abs(labelDy) &lt; baseLabelOffset*0.8 &amp;&amp; Math.abs(labelDx) &gt; Math.abs(labelDy) ) labelDy = labelDy &lt; 0 ? -baseLabelOffset*0.8 : baseLabelOffset*0.8;
+                                text.setAttribute("text-anchor", labelDx &lt; 0 ? "end" : "start");
+                                text.setAttribute("dominant-baseline", labelDy &lt; (baseLabelOffset*0.2) ? "alphabetic" : "hanging"); // Adjusted baseline logic
+                            } else if (el.label &amp;&amp; el.label.startsWith("c")) {
+                                labelDy = -baseLabelOffset * 1.2; labelDx = (el.label === "c0" || el.label === "c1") ? baseLabelOffset*1.2 : -baseLabelOffset*1.2;
+                                text.setAttribute("text-anchor", labelDx &lt; 0 ? "end" : "start");
+                                text.setAttribute("dominant-baseline", "alphabetic");
+                            }
+                            text.setAttribute("x", el.x + labelDx); 
+                            text.setAttribute("y", el.y + labelDy); 
+                            text.setAttribute("class", el.type === 'interp-point' ? 'label-interp' : (el.type === 'vertex' ? 'label-vertex' : 'label'));
+                            text.textContent = el.label;
+                            diagramContentGroup.appendChild(text);
+                        } else if (el.type === 'text') { 
+                             const textEl = document.createElementNS(ns, "text");
+                             textEl.setAttribute("x", el.x); textEl.setAttribute("y", el.y);
+                             textEl.setAttribute("class", el.class);
+                             textEl.setAttribute("text-anchor", "middle");
+                             textEl.setAttribute("dominant-baseline", "middle");
+                             textEl.textContent = el.text;
+                             diagramContentGroup.appendChild(textEl);
+                        }
+                    });
+
+                    const axesGroup = document.createElementNS(ns, "g");
+                    diagramContentGroup.appendChild(axesGroup);
+                    const axisWorldLength = baseWorldCellSize * 1.3; // Base world length for axes
+                    
+                    const pOriginAx = projectToScreen(0,0,0);
+                    const pMaxX = projectToScreen(axisWorldLength, 0, 0);
+                    const pMaxY = projectToScreen(0, axisWorldLength, 0);
+                    const pMaxZ = projectToScreen(0, 0, axisWorldLength);
+
+                    function createAxis(p1, p2, color, markerId, label, labelFill, labelDxFactor, labelDyFactor) {
+                        const axisLine = document.createElementNS(ns, "line");
+                        axisLine.setAttribute("x1",p1.x); axisLine.setAttribute("y1",p1.y); 
+                        axisLine.setAttribute("x2",p2.x); axisLine.setAttribute("y2",p2.y);
+                        axisLine.setAttribute("stroke", color); 
+                        axisLine.setAttribute("stroke-width", (baseAxisStrokeWidth * displayScaleFactor).toString()); 
+                        axisLine.setAttribute("marker-end", `url(#${markerId})`);
+                        axesGroup.appendChild(axisLine);
+                        const labelEl = document.createElementNS(ns, "text");
+                        const dynamicOffset = baseLabelOffset * displayScaleFactor * 0.8; // Scaled consistent offset
+                        labelEl.setAttribute("x", p2.x + labelDxFactor * dynamicOffset); 
+                        labelEl.setAttribute("y", p2.y + labelDyFactor * dynamicOffset); 
+                        labelEl.setAttribute("class","axis-label"); labelEl.setAttribute("fill",labelFill);
+                        labelEl.setAttribute("text-anchor", labelDxFactor &gt; 0.1 ? "start" : (labelDxFactor &lt; -0.1 ? "end" : "middle"));
+                        labelEl.setAttribute("dominant-baseline", labelDyFactor &gt; 0.1 ? "hanging" : (labelDyFactor &lt; -0.1 ? "alphabetic" : "middle"));
+                        labelEl.textContent = label; axesGroup.appendChild(labelEl);
+                    }
+                    let xDirX = pMaxX.x - pOriginAx.x; let xDirY = pMaxX.y - pOriginAx.y; let normX = Math.sqrt(xDirX*xDirX + xDirY*xDirY) || 1;
+                    createAxis(pOriginAx, pMaxX, "red", "axisArrow", "x", "red", xDirX/normX, xDirY/normX);
+                    let yDirX = pMaxY.x - pOriginAx.x; let yDirY = pMaxY.y - pOriginAx.y; let normY = Math.sqrt(yDirX*yDirX + yDirY*yDirY) || 1;
+                    createAxis(pOriginAx, pMaxY, "green", "axisArrow", "y", "green", yDirX/normY, yDirY/normY);
+                    let zDirX = pMaxZ.x - pOriginAx.x; let zDirY = pMaxZ.y - pOriginAx.y; let normZ = Math.sqrt(zDirX*zDirX + zDirY*zDirY) || 1;
+                    createAxis(pOriginAx, pMaxZ, "blue", "axisArrow", "z", "blue", zDirX/normZ, zDirY/normZ);
+
+                    let formulaY = -100; 
+                    const formulaX = 700; // Hardcoded X for formulas, further right
+                    const lineH = 30 * displayScaleFactor; 
+
+                    function addFormulaToGroup(text, yPos, xPos = formulaX+100, className = "formula-text", anchor = "start") {
+                        const t = document.createElementNS(ns, "text");
+                        t.setAttribute("x", xPos); t.setAttribute("y", yPos);
+                        t.setAttribute("class", className);
+                        t.setAttribute("text-anchor", anchor);
+                        t.textContent = text;
+                        formulaGroup.appendChild(t);
+                        return yPos + lineH;
+                    }
+                    formulaY = addFormulaToGroup("Interpolation Steps:", formulaY+150, formulaX + 200, "formula-title", "middle"); // Adjusted title X
+                    formulaY = addFormulaToGroup("1. Along x (at cell faces):", formulaY + 5 * displayScaleFactor);
+                    formulaY = addFormulaToGroup("   c₀₀ = (1-xd)V₀₀₀ + xd·V₁₀₀", formulaY + 5 * displayScaleFactor);
+                    formulaY = addFormulaToGroup("   c₁₀ = (1-xd)V₀₁₀ + xd·V₁₁₀", formulaY);
+                    formulaY = addFormulaToGroup("   c₀₁ = (1-xd)V₀₀₁ + xd·V₁₀₁", formulaY);
+                    formulaY = addFormulaToGroup("   c₁₁ = (1-xd)V₀₁₁ + xd·V₁₁₁", formulaY);
+                    formulaY = addFormulaToGroup("2. Along y (using results):", formulaY + lineH);
+                    formulaY = addFormulaToGroup("   c₀ = (1-yd)c₀₀ + yd·c₁₀", formulaY + 5*displayScaleFactor);
+                    formulaY = addFormulaToGroup("   c₁ = (1-yd)c₀₁ + yd·c₁₁", formulaY);
+                    formulaY = addFormulaToGroup("3. Along z (final interpolation):", formulaY + lineH);
+                    formulaY = addFormulaToGroup("   P = (1-zd)c₀ + zd·c₁", formulaY + 5*displayScaleFactor);
+                }
+
+                hRotSlider.oninput = () =&gt; { /* ... */ currentHRotDeg = parseFloat(hRotSlider.value); hRotValSpan.textContent = currentHRotDeg; };
+                vRotSlider.oninput = () =&gt; { /* ... */ currentVRotDeg = parseFloat(vRotSlider.value); vRotValSpan.textContent = currentVRotDeg; };
+                redrawButton.onclick = drawDiagram;
+                drawDiagram();
+            })();
+        </script>
+    </g>
+</svg></body></html>

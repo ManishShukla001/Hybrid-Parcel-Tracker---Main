@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!-- saved from url=(0075)file:///D:/ERA5/Particle_Codes/Hybrid/New_Hybrid2/diagrams/rk4_diagram.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RK4 Method Illustration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100%; /* Make container responsive */
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-style: italic;
+        }
+        svg {
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%; /* Make SVG responsive */
+            height: auto; /* Maintain aspect ratio */
+        }
+        .legend {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-line {
+            width: 30px;
+            height: 3px;
+        }
+        /* Styles for text within explanation boxes */
+        .explanation-box-title { font-size: 20px; font-weight: bold; } /* Increased */
+        .explanation-box-formula { font-size: 18px; } /* Increased */
+        .explanation-box-desc { font-size: 16px; fill: #666; } /* Increased */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Runge-Kutta 4th Order (RK4) Method</h1>
+        <!-- <p class="subtitle">Large-Scale Visualization with Simple Arrows</p> -->
+
+        <svg viewBox="0 0 1300 900"> <!-- Removed fixed width and height -->
+            <defs>
+                <marker id="k1-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"> <path d="M0,0 L0,8 L6,4 z" fill="#e74c3c"></path> </marker>
+                <marker id="k2-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"> <path d="M0,0 L0,8 L6,4 z" fill="#3498db"></path> </marker>
+                <marker id="k3-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"> <path d="M0,0 L0,8 L6,4 z" fill="#2ecc71"></path> </marker>
+                <marker id="k4-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"> <path d="M0,0 L0,8 L6,4 z" fill="#f39c12"></path> </marker>
+                <marker id="final-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth"> <path d="M0,0 L0,10 L8,5 z" fill="#9b59b6"></path> </marker>
+            </defs>
+            
+            <rect width="1300" height="900" fill="#fafafa"></rect>
+            
+            <text x="650" y="40" text-anchor="middle" font-size="24" font-weight="bold" fill="#2c3e50">
+                RK4 Method: Step-by-Step Visualization
+            </text>
+            
+            <g id="rk4-main-diagram">
+                <circle cx="200" cy="650" r="12" fill="#2c3e50" stroke="#fff" stroke-width="4"></circle>
+                <text x="200" y="615" text-anchor="middle" font-size="20" font-weight="bold" fill="#2c3e50">P_n</text>
+                <text x="200" y="685" text-anchor="middle" font-size="16" fill="#666">(t_n)</text>
+
+                <line x1="200" y1="650" x2="450" y2="500" stroke="#e74c3c" stroke-width="5" marker-end="url(#k1-arrow)"></line>
+                <text x="335" y="550" text-anchor="middle" font-size="20" font-weight="bold" fill="#e74c3c" transform="rotate(-32, 335, 550)">k₁</text>
+                
+                <circle cx="325" cy="575" r="8" fill="#777" stroke="#fff" stroke-width="2"></circle>
+                <text x="325" y="540" text-anchor="middle" font-size="16" fill="#555">P_n + k₁/2</text>
+                
+                <line x1="325" y1="575" x2="550" y2="400" stroke="#3498db" stroke-width="5" marker-end="url(#k2-arrow)"></line>
+                <text x="450" y="465" text-anchor="middle" font-size="20" font-weight="bold" fill="#3498db" transform="rotate(-38, 450, 465)">k₂</text>
+                
+                <circle cx="437.5" cy="487.5" r="8" fill="#777" stroke="#fff" stroke-width="2"></circle>
+                <text x="430" y="452" text-anchor="end" font-size="16" fill="#555">P_n + k₂/2</text>
+                
+                <line x1="437.5" y1="487.5" x2="680" y2="300" stroke="#2ecc71" stroke-width="5" marker-end="url(#k3-arrow)"></line>
+                <text x="570" y="370" text-anchor="middle" font-size="20" font-weight="bold" fill="#2ecc71" transform="rotate(-40, 570, 370)">k₃</text>
+
+                <circle cx="680" cy="300" r="8" fill="#777" stroke="#fff" stroke-width="2"></circle>
+                <text x="630" y="275" text-anchor="start" font-size="16" fill="#555">P_n + k₃</text>
+                
+                <line x1="680" y1="300" x2="950" y2="150" stroke="#f39c12" stroke-width="5" marker-end="url(#k4-arrow)"></line>
+                <text x="825" y="205" text-anchor="middle" font-size="20" font-weight="bold" fill="#f39c12" transform="rotate(-30, 825, 205)">k₄</text>
+                
+                <circle cx="750" cy="250" r="12" fill="#9b59b6" stroke="#fff" stroke-width="4"></circle>
+                <text x="750" y="215" text-anchor="middle" font-size="20" font-weight="bold" fill="#9b59b6">P_{n+1}</text>
+                <text x="770" y="295" text-anchor="middle" font-size="16" fill="#666">(t_n + dt)</text>
+                
+                <line x1="200" y1="650" x2="750" y2="250" stroke="#9b59b6" stroke-width="6" marker-end="url(#final-arrow)" stroke-dasharray="15,10"></line>
+                <!-- Moved ΔP label further down and slightly to the left of the arrow's midpoint -->
+                <text x="440" y="470" text-anchor="end" font-size="24" font-weight="bold" fill="#9b59b6" transform="rotate(-36, 440, 470)">ΔP</text>
+            </g>
+            
+            <g id="explanation-boxes">
+                <rect x="50" y="80" width="280" height="120" fill="#ffe6e6" stroke="#e74c3c" stroke-width="2" rx="8"></rect>
+                <text x="190" y="105" text-anchor="middle" class="explanation-box-title" fill="#e74c3c">Step 1: Calculate k₁</text>
+                <text x="90" y="135" class="explanation-box-formula" fill="#c0392b">k₁ = dt · f(t_n, P_n, α_n)</text>
+                <text x="90" y="160" class="explanation-box-desc">Start from P_n, slope at t_n</text>
+                
+                <!-- Step 2 box shifted right -->
+                <rect x="960" y="80" width="310" height="120" fill="#e6f3ff" stroke="#3498db" stroke-width="2" rx="8"></rect>
+                <text x="1095" y="105" text-anchor="middle" class="explanation-box-title" fill="#3498db">Step 2: Calculate k₂</text>
+                <text x="980" y="135" class="explanation-box-formula" fill="#2980b9">k₂ = dt · f(t_n+dt/2, P_n+k₁/2, α)</text>
+                <text x="980" y="160" class="explanation-box-desc">Slope at midpoint of k₁ &amp; mid-time</text>
+                
+                <rect x="50" y="730" width="280" height="120" fill="#e8f8f5" stroke="#2ecc71" stroke-width="2" rx="8"></rect>
+                <text x="190" y="755" text-anchor="middle" class="explanation-box-title" fill="#2ecc71">Step 3: Calculate k₃</text>
+                <text x="70" y="785" class="explanation-box-formula" fill="#27ae60">k₃ = dt · f(t_n+dt/2, P_n+k₂/2, α)</text>
+                <text x="70" y="810" class="explanation-box-desc">Slope at midpoint of k₂ &amp; mid-time</text>
+                
+                 <!-- Step 4 box shifted right -->
+                <rect x="900" y="730" width="350" height="120" fill="#fef5e7" stroke="#f39c12" stroke-width="2" rx="8"></rect>
+                <text x="1075" y="755" text-anchor="middle" class="explanation-box-title" fill="#f39c12">Step 4: Calculate k₄</text>
+                <text x="970" y="785" class="explanation-box-formula" fill="#e67e22">k₄ = dt · f(t_n+dt, P_n+k₃, α)</text>
+                <text x="970" y="810" class="explanation-box-desc">Slope at end of k₃ &amp; end-time</text>
+
+                <rect x="500" y="500" width="380" height="140" fill="#f4f1f8" stroke="#9b59b6" stroke-width="2" rx="8"></rect> {/* Made slightly wider/taller */}
+                <text x="690" y="525" text-anchor="middle" class="explanation-box-title" fill="#9b59b6">Final Step Combination</text>
+                <text x="580" y="555" class="explanation-box-formula" fill="#8e44ad">ΔP = (k₁ + 2k₂ + 2k₃ + k₄) / 6</text>
+                <text x="580" y="580" class="explanation-box-desc">Weighted average of slopes</text>
+                <text x="580" y="598" class="explanation-box-desc">• k₁, k₄ weight 1 (endpoints)</text>
+                <text x="580" y="616" class="explanation-box-desc">• k₂, k₃ weight 2 (midpoints)</text>
+            </g>
+            
+            <g id="calculation-flow">
+                <rect x="950" y="250" width="220" height="400" fill="#ecf0f1" stroke="#95a5a6" stroke-width="2" rx="10"></rect>
+                <text x="1060" y="280" text-anchor="middle" font-size="18" font-weight="bold" fill="#2c3e50">Calculation Flow</text>
+                <rect x="970" y="300" width="180" height="40" fill="#e74c3c" opacity="0.3" rx="5"></rect>
+                <text x="1060" y="325" text-anchor="middle" font-size="16" font-weight="bold" fill="#c0392b">k₁ at P_n</text>
+                <text x="1060" y="355" text-anchor="middle" font-size="18" fill="#34495e">↓</text>
+                <rect x="970" y="365" width="180" height="40" fill="#3498db" opacity="0.3" rx="5"></rect>
+                <text x="1060" y="390" text-anchor="middle" font-size="16" font-weight="bold" fill="#2980b9">k₂ at P_n+k₁/2</text>
+                <text x="1060" y="420" text-anchor="middle" font-size="18" fill="#34495e">↓</text>
+                <rect x="970" y="430" width="180" height="40" fill="#2ecc71" opacity="0.3" rx="5"></rect>
+                <text x="1060" y="455" text-anchor="middle" font-size="16" font-weight="bold" fill="#27ae60">k₃ at P_n+k₂/2</text>
+                <text x="1060" y="485" text-anchor="middle" font-size="18" fill="#34495e">↓</text>
+                <rect x="970" y="495" width="180" height="40" fill="#f39c12" opacity="0.3" rx="5"></rect>
+                <text x="1060" y="520" text-anchor="middle" font-size="16" font-weight="bold" fill="#e67e22">k₄ at P_n+k₃</text>
+                <text x="1060" y="550" text-anchor="middle" font-size="18" fill="#34495e">↓</text>
+                <rect x="970" y="560" width="180" height="50" fill="#9b59b6" opacity="0.3" rx="5"></rect>
+                <text x="1060" y="580" text-anchor="middle" font-size="16" font-weight="bold" fill="#8e44ad">Weighted</text>
+                <text x="1060" y="595" text-anchor="middle" font-size="16" font-weight="bold" fill="#8e44ad">Combination</text>
+            </g>
+            
+            <text x="600" y="880" text-anchor="middle" font-size="16" fill="#7f8c8d">Longitude →</text>
+            <text x="50" y="450" text-anchor="middle" font-size="16" fill="#7f8c8d" transform="rotate(-90, 50, 450)"> Latitude →</text>
+        </svg>
+        
+        <div class="legend">
+            <!-- Legend items ... -->
+            <div class="legend-item"><div class="legend-line" style="background-color: #e74c3c; height: 5px;"></div><span><strong>k₁:</strong> Initial slope</span></div>
+            <div class="legend-item"><div class="legend-line" style="background-color: #3498db; height: 5px;"></div><span><strong>k₂:</strong> 1st midpoint slope</span></div>
+            <div class="legend-item"><div class="legend-line" style="background-color: #2ecc71; height: 5px;"></div><span><strong>k₃:</strong> 2nd midpoint slope</span></div>
+            <div class="legend-item"><div class="legend-line" style="background-color: #f39c12; height: 5px;"></div><span><strong>k₄:</strong> Endpoint slope</span></div>
+            <div class="legend-item"><div class="legend-line" style="background-color: #9b59b6; height: 6px; background-image: repeating-linear-gradient(90deg, #9b59b6 0px, #9b59b6 15px, transparent 15px, transparent 25px);"></div><span><strong>ΔP:</strong> Final displacement</span></div>
+        </div>
+    </div>
+
+</body></html>

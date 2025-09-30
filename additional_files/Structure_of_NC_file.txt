@@ -1,0 +1,78 @@
+File Naming Convention:
+
+particles_output_YYYYMMDD_HHMMSS.nc (if time_identifier is a datetime object, typically for API mode)
+particles_output_HHHH.nc (if time_identifier is an integer, typically for CSV mode, where HHHH is zero-padded)
+Overall Structure:
+
+The NetCDF file for each output step is designed to be a snapshot of all particle states at that specific time. It uses xarray to create the dataset, which generally follows CF (Climate and Forecast) conventions where possible.
+
+Coordinates:
+
+particle_id:
+
+Dimension Name: particle_id
+Type: Likely float64 (as it comes from particles[:, 0]).
+Description: A unique identifier for each particle. This acts as the primary dimension for most data variables.
+Values: The actual particle IDs (e.g., 1.0, 2.0, 3.0, ...).
+time (This coordinate is only present if time_identifier was a Python datetime object, which is typical for API mode output):
+
+Dimension Name: time
+Type: datetime64[ns] (NumPy datetime object with nanosecond precision).
+Description: Represents the specific UTC timestamp for which this particle data snapshot is valid.
+Shape: It's a scalar coordinate (or a 1-element array dimensioned by 'time') because each file represents a single time instance.
+Attributes (typically added by xarray based on datetime64 type):
+units: e.g., "seconds since 1970-01-01T00:00:00Z" or similar.
+calendar: e.g., "proleptic_gregorian" or "standard".
+Data Variables:
+
+All data variables will have particle_id as their dimension.
+
+latitude:
+
+Dimensions: ('particle_id',)
+Type: float64 (from particles[:, 1])
+Units: degrees_north
+Long Name: Latitude
+Description: The latitude of each particle.
+longitude:
+
+Dimensions: ('particle_id',)
+Type: float64 (from particles[:, 2])
+Units: degrees_east
+Long Name: Longitude
+Description: The longitude of each particle.
+pressure:
+
+Dimensions: ('particle_id',)
+Type: float64 (from particles[:, 3])
+Units: hPa
+Long Name: Pressure Level
+Description: The pressure level (in hectopascals) of each particle.
+specific_humidity (Optional, only if q_values were provided):
+
+Dimensions: ('particle_id',)
+Type: float64 (from q_values)
+Units: kg kg-1 (kilogram of water vapor per kilogram of air)
+Long Name: Specific Humidity
+Description: The specific humidity at each particle's location.
+temperature (Optional, only if t_values were provided):
+
+Dimensions: ('particle_id',)
+Type: float64 (from t_values)
+Units: K (Kelvin)
+Long Name: Temperature
+Description: The temperature at each particle's location.
+Global Attributes:
+
+These are attributes that apply to the entire NetCDF file.
+
+creation_date:
+
+Type: String
+Description: An ISO 8601 formatted string representing the date and time (UTC) when the file was created.
+Example: "2023-10-27T10:30:00.123456+00:00"
+source_script:
+
+Type: String
+Description: The path to the Python script (particle_tracker.py) that generated this NetCDF file.
+Example: "d:\\ERA5\\Particle_Codes\\Hybrid\\New_Hybrid2\\src\\python\\particle_tracker.py"
