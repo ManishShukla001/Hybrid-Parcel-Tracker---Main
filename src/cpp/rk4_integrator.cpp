@@ -11,6 +11,8 @@
 
 const double R_EARTH = 6371000.0; // Earth radius in meters
 const double MIN_COS_FACTOR = std::cos(85.0 * M_PI / 180.0); // cos(85 degrees)
+const double KAPPA = 0.286;
+const double P0_HPA = 1000.0;
 
 RK4Integrator::RK4Integrator(double dt_seconds, double data_interval_hours)
     : dt_seconds_(dt_seconds), data_interval_hours_(data_interval_hours) {}
@@ -63,7 +65,22 @@ std::array<double, 3> RK4Integrator::get_velocity(
     return {delta_lat_deg_s, delta_lon_deg_s, delta_p_hpa_s};
 }
 
-std::array<double, 4> RK4Integrator::integrate_particle(
+// Helper for scalar interpolation
+static double interpolate_scalar(
+    double lat, double lon, double pressure, double alpha,
+    const RegularGrid3DInterpolator* curr,
+    const RegularGrid3DInterpolator* next,
+    const std::array<double, 6>& bounds) {
+    if (!curr || !next) return 0.0;
+    double c_lat = std::clamp(lat, bounds[0], bounds[1]);
+    double c_lon = std::clamp(lon, bounds[2], bounds[3]);
+    double c_p = std::clamp(pressure, bounds[4], bounds[5]);
+    double val_curr = curr->interpolate(c_lat, c_lon, c_p);
+    double val_next = next->interpolate(c_lat, c_lon, c_p);
+    return (1.0 - alpha) * val_curr + alpha * val_next;
+}
+
+std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     double particle_id, double lat, double lon, double pressure,
     double alpha,
     const RegularGrid3DInterpolator& u_curr,
@@ -72,7 +89,9 @@ std::array<double, 4> RK4Integrator::integrate_particle(
     const RegularGrid3DInterpolator& u_next,
     const RegularGrid3DInterpolator& v_next,
     const RegularGrid3DInterpolator& w_next,
-    const std::array<double, 6>& bounds
+    const std::array<double, 6>& bounds,
+    ThermoMode thermo_mode,
+    const ThermoInterpolators& thermo_interp
 ) const {
     
     std::array<double, 3> pos = {lat, lon, pressure};
@@ -116,24 +135,84 @@ std::array<double, 4> RK4Integrator::integrate_particle(
     double new_lon = pos[1] + delta_pos[1];
     double new_pressure = pos[2] + delta_pos[2];
     
-    // Apply global physical boundaries
-    // Clamp latitude to [-90, 90]
     new_lat = std::clamp(new_lat, -90.0, 90.0);
-    
-    // Wrap longitude to [-180, 180)
-    // This formula correctly handles positive and negative longitudes.
     new_lon = new_lon - std::floor((new_lon + 180.0) / 360.0) * 360.0;
-    // Optional: if your convention is (-180, 180] and new_lon becomes exactly -180, adjust to 180.0
-    // if (new_lon == -180.0) { new_lon = 180.0; }
-    
-    // Clamp pressure (already present and correct)
     new_pressure = std::clamp(new_pressure, bounds[4], bounds[5]);
-    return {particle_id, new_lat, new_lon, new_pressure};
+    
+    std::array<double, 4> new_particle = {particle_id, new_lat, new_lon, new_pressure};
+    ThermoState delta_ts;
+    
+    // Thermodynamic Calculations
+    if (thermo_mode != ThermoMode::NONE) {
+        if (thermo_mode == ThermoMode::SIMPLE_SUBTRACTION) {
+            double t_start = interpolate_scalar(lat, lon, pressure, alpha, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            double t_end = interpolate_scalar(new_lat, new_lon, new_pressure, alpha_k4, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            delta_ts.values[0] = t_end - t_start;
+        } 
+        else if (thermo_mode == ThermoMode::POTENTIAL_TEMPERATURE) {
+            double t_start = interpolate_scalar(lat, lon, pressure, alpha, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            double t_end = interpolate_scalar(new_lat, new_lon, new_pressure, alpha_k4, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            double theta_start = t_start * std::pow(P0_HPA / pressure, KAPPA);
+            double theta_end = t_end * std::pow(P0_HPA / new_pressure, KAPPA);
+            delta_ts.values[0] = theta_end - theta_start; // delta_theta
+            delta_ts.values[1] = 0.0; // delta_DSE (needs z, omitted for now)
+        }
+        else if (thermo_mode == ThermoMode::FULL_DECOMPOSITION) {
+            // Helper lambda to evaluate integrands at a point (lat, lon, p, alpha)
+            auto evaluate_terms = [&](double l_lat, double l_lon, double l_p, double l_alpha) -> std::array<double, 3> {
+                double u_c = u_curr.interpolate(l_lat, l_lon, l_p);
+                double v_c = v_curr.interpolate(l_lat, l_lon, l_p);
+                double w_c = w_curr.interpolate(l_lat, l_lon, l_p);
+                double u_n = u_next.interpolate(l_lat, l_lon, l_p);
+                double v_n = v_next.interpolate(l_lat, l_lon, l_p);
+                double w_n = w_next.interpolate(l_lat, l_lon, l_p);
+                double u = (1.0 - l_alpha) * u_c + l_alpha * u_n;
+                double v = (1.0 - l_alpha) * v_c + l_alpha * v_n;
+                double w_pa_s = (1.0 - l_alpha) * w_c + l_alpha * w_n; // omega in Pa/s
+                
+                double dt_mean_dt = interpolate_scalar(l_lat, l_lon, l_p, l_alpha, thermo_interp.dt_mean_dt_curr, thermo_interp.dt_mean_dt_next, bounds);
+                double grad_lat = interpolate_scalar(l_lat, l_lon, l_p, l_alpha, thermo_interp.grad_t_lat_curr, thermo_interp.grad_t_lat_next, bounds);
+                double grad_lon = interpolate_scalar(l_lat, l_lon, l_p, l_alpha, thermo_interp.grad_t_lon_curr, thermo_interp.grad_t_lon_next, bounds);
+                double grad_p = interpolate_scalar(l_lat, l_lon, l_p, l_alpha, thermo_interp.grad_t_p_curr, thermo_interp.grad_t_p_next, bounds);
+                double t_mean = interpolate_scalar(l_lat, l_lon, l_p, l_alpha, thermo_interp.t_mean_curr, thermo_interp.t_mean_next, bounds);
+                
+                double term1_seasonality = -dt_mean_dt;
+                double term2_advective = -(u * grad_lon + v * grad_lat);
+                
+                // Adiabatic term: (kappa * t_mean / p_pa - grad_p) * omega
+                // Note: l_p is in hPa, so p_pa = l_p * 100
+                double p_pa = l_p * 100.0;
+                double term3_adiabatic = ((KAPPA * t_mean / p_pa) - grad_p) * w_pa_s;
+                
+                return {term1_seasonality, term2_advective, term3_adiabatic};
+            };
+            
+            auto start_terms = evaluate_terms(lat, lon, pressure, alpha);
+            auto end_terms = evaluate_terms(new_lat, new_lon, new_pressure, alpha_k4);
+            
+            // Trapezoidal rule integration over dt_seconds_
+            delta_ts.values[0] = 0.5 * dt_seconds_ * (start_terms[0] + end_terms[0]); // Seasonality
+            delta_ts.values[1] = 0.5 * dt_seconds_ * (start_terms[1] + end_terms[1]); // Advective
+            delta_ts.values[2] = 0.5 * dt_seconds_ * (start_terms[2] + end_terms[2]); // Adiabatic
+            
+            // Diabatic term approx: (p_avg / P0)^kappa * (theta_end - theta_start)
+            double t_start = interpolate_scalar(lat, lon, pressure, alpha, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            double t_end = interpolate_scalar(new_lat, new_lon, new_pressure, alpha_k4, thermo_interp.t_curr, thermo_interp.t_next, bounds);
+            double theta_start = t_start * std::pow(P0_HPA / pressure, KAPPA);
+            double theta_end = t_end * std::pow(P0_HPA / new_pressure, KAPPA);
+            double p_avg = 0.5 * (pressure + new_pressure);
+            
+            delta_ts.values[3] = std::pow(p_avg / P0_HPA, KAPPA) * (theta_end - theta_start);
+        }
+    }
+    
+    return {new_particle, delta_ts};
 }
 
 void RK4Integrator::integrate_batch(
     const std::vector<std::array<double, 4>>& particles,
     std::vector<std::array<double, 4>>& results,
+    std::vector<ThermoState>& thermo_results,
     double alpha,
     const RegularGrid3DInterpolator& u_curr,
     const RegularGrid3DInterpolator& v_curr,
@@ -141,17 +220,54 @@ void RK4Integrator::integrate_batch(
     const RegularGrid3DInterpolator& u_next,
     const RegularGrid3DInterpolator& v_next,
     const RegularGrid3DInterpolator& w_next,
-    const std::array<double, 6>& bounds
+    const std::array<double, 6>& bounds,
+    ThermoMode thermo_mode,
+    const ThermoInterpolators& thermo_interp
 ) const {
-    
     size_t n = particles.size();
     results.resize(n);
+    thermo_results.resize(n);
     
-    for (size_t i = 0; i < n; ++i) {
-        const auto& particle = particles[i];
-        results[i] = integrate_particle(
-            particle[0], particle[1], particle[2], particle[3],
-            alpha, u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds
+    integrate_batch(
+        reinterpret_cast<const double*>(particles.data()),
+        reinterpret_cast<double*>(results.data()),
+        thermo_results.data(),
+        n,
+        alpha, u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds, thermo_mode, thermo_interp
+    );
+}
+
+void RK4Integrator::integrate_batch(
+    const double* particles,
+    double* results,
+    ThermoState* thermo_results,
+    size_t count,
+    double alpha,
+    const RegularGrid3DInterpolator& u_curr,
+    const RegularGrid3DInterpolator& v_curr,
+    const RegularGrid3DInterpolator& w_curr,
+    const RegularGrid3DInterpolator& u_next,
+    const RegularGrid3DInterpolator& v_next,
+    const RegularGrid3DInterpolator& w_next,
+    const std::array<double, 6>& bounds,
+    ThermoMode thermo_mode,
+    const ThermoInterpolators& thermo_interp
+) const {
+    for (size_t i = 0; i < count; ++i) {
+        const double* p = particles + i * 4;
+        double* r = results + i * 4;
+        
+        auto res = integrate_particle(
+            p[0], p[1], p[2], p[3],
+            alpha, u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds, thermo_mode, thermo_interp
         );
+        
+        r[0] = res.first[0];
+        r[1] = res.first[1];
+        r[2] = res.first[2];
+        r[3] = res.first[3];
+        if (thermo_results) {
+            thermo_results[i] = res.second;
+        }
     }
 }

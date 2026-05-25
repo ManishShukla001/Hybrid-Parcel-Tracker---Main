@@ -11,10 +11,7 @@ build-backend = "setuptools.build_meta"
 name = "hybrid_particle_tracker"
 version = "1.0.0"
 description = "High-performance hybrid C++/Python particle tracking system"
-authors = [
-    {name = "Manish Shukla", email = "manishshukla01@live.com"},
-    {name = "R. Maheshwaran"}
-]
+authors = [{name = "Particle Tracking Team"}]
 license = {text = "MIT"}
 requires-python = ">=3.8"
 dependencies = [
@@ -25,6 +22,10 @@ dependencies = [
     "cartopy>=0.20.0",
     "tqdm>=4.60.0",
     "pybind11>=2.10.0",
+    "xarray",
+    "netcdf4",
+    "cdsapi",
+    "seaborn",
 ]
 
 [tool.setuptools]

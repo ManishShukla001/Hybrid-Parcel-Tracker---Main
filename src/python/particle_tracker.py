@@ -21,11 +21,13 @@ except ImportError:
 
 try:
     from .data_loader import VelocityDataLoader
+    from .nc_data_loader import NCDataLoader
     from .visualization import ParticleVisualizer
     from .api_data_handler import APIDataHandler
 except ImportError:
     # Fallback for direct execution
     from data_loader import VelocityDataLoader
+    from nc_data_loader import NCDataLoader
     from visualization import ParticleVisualizer
     from api_data_handler import APIDataHandler
 
@@ -43,31 +45,60 @@ class HybridParticleTracker:
             config: Configuration dictionary containing simulation parameters
         """
         self.config = config
-        self.validate_config()
         
         # Initialize data handler based on config
+        # For NC, we initialize first to extract metadata
+        if self.config['data_source'].upper() in ["NC", "NETCDF"]:
+            self.data_handler = NCDataLoader(
+                nc_data_dir=config['nc_data_dir'],
+                nc_file_pattern=config.get('nc_file_pattern')
+            )
+            # Inject metadata into config if not present or to ensure consistency
+            if self.data_handler.pressure_levels is not None:
+                self.config['pressure_levels'] = self.data_handler.pressure_levels
+                print(f"Extracted {len(self.config['pressure_levels'])} pressure levels from NC files.")
+            
+            # TODO: Infer data interval if not provided? user says "input_data_interval" variable exists.
+            
+            # API and CSV data handlers are initialized after validation or need config validation first
+            
+        self.validate_config()
+        
+        # Initialize other data handlers if not NC
         if self.config['data_source'].upper() == "API":
             self.data_handler = APIDataHandler(config)
-            # Convert string datetime to datetime object
+        elif self.config['data_source'].upper() == "CSV":
+            self.data_handler = VelocityDataLoader(
+                csv_base_dir=config['csv_base_dir'], pressure_levels=config['pressure_levels'])
+        
+        # NC already initialized
+        
+        # Parse start datetime if available (needed for API and optional/required for NC)
+        if 'simulation_start_datetime' in config:
             try:
                 self.simulation_start_datetime_obj = datetime.strptime(
                     config['simulation_start_datetime'], "%Y-%m-%d %H:%M:%S"
                 ).replace(tzinfo=timezone.utc)
             except ValueError:
                 raise ValueError("Invalid simulation_start_datetime format. Use YYYY-MM-DD HH:MM:SS")
-        elif self.config['data_source'].upper() == "CSV":
-            self.data_handler = VelocityDataLoader(
-                csv_base_dir=config['csv_base_dir'], pressure_levels=config['pressure_levels'])
         else:
-            raise ValueError(f"Unsupported data_source: {self.config['data_source']}")
-
+            self.simulation_start_datetime_obj = None # May cause issues if needed but not provided
+        
+        # NC already initialized
+        
         self.visualizer = ParticleVisualizer(config['output_dir'])
         
         # Initialize C++ engine if available
         if particle_engine_cpp is not None:
             dt_seconds = config['simulation_step_hours'] * 3600.0
+            use_parallel = config.get('execution_mode', 'serial').lower() == 'parallel'
+            if use_parallel:
+                print("INFO: Initializing C++ engine in PARALLEL mode (OpenMP)")
+            else:
+                print("INFO: Initializing C++ engine in SERIAL mode")
+                
             self.cpp_engine = particle_engine_cpp.ParticleEngine(
-                dt_seconds, config['data_interval_hours']
+                dt_seconds, config['data_interval_hours'], use_parallel
             )
         else:
             self.cpp_engine = None
@@ -75,31 +106,86 @@ class HybridParticleTracker:
         
         # Simulation state
         self.particles = None
+        self.thermo_states = None
+        self.thermo_bg_interps = {}
         self.current_step = 0
         self.interpolators = {}
+        
+        if self.config.get('thermo_mode', 'None').upper() == 'FULL_DECOMPOSITION':
+            self._load_thermo_background()
+
         
         # Setup directories
         self.setup_directories()
     
+
+    def _load_thermo_background(self):
+        bg_file = self.config.get('thermo_bg_file')
+        if not bg_file:
+            print("WARNING: FULL_DECOMPOSITION mode requires thermo_bg_file.")
+            return
+        print(f"Loading thermo background from {bg_file}")
+        import xarray as xr
+        import numpy as np
+        try:
+            ds = xr.open_dataset(bg_file)
+            lat_coords = np.sort(ds.latitude.values)
+            lon_coords = np.sort(ds.longitude.values)
+            p_coords = ds.level.values if 'level' in ds.coords else ds.pressure.values
+            p_coords = np.sort(p_coords)
+
+            def get_bg_interp(var_name):
+                if var_name not in ds: return None
+                data_slice = ds[var_name].load()
+                dims = data_slice.dims
+                transpose_order = []
+                for d in dims:
+                    if 'lat' in d.lower(): transpose_order.append(d)
+                for d in dims:
+                    if 'lon' in d.lower(): transpose_order.append(d)
+                for d in dims:
+                    if 'level' in d.lower() or 'pressure' in d.lower(): transpose_order.append(d)
+                
+                data_transposed = data_slice.transpose(*transpose_order)
+                values = np.nan_to_num(data_transposed.values, nan=0.0).flatten()
+                
+                return self.cpp_engine.create_interpolator(
+                    lat_coords.tolist(), lon_coords.tolist(), p_coords.tolist(), values
+                )
+
+            self.thermo_bg_interps['t_mean'] = get_bg_interp('t_mean')
+            self.thermo_bg_interps['grad_t_lat'] = get_bg_interp('grad_t_lat')
+            self.thermo_bg_interps['grad_t_lon'] = get_bg_interp('grad_t_lon')
+            self.thermo_bg_interps['grad_t_p'] = get_bg_interp('grad_t_p')
+            self.thermo_bg_interps['dt_mean_dt'] = get_bg_interp('dt_mean_dt')
+        except Exception as e:
+            print(f"ERROR loading thermo background: {e}")
+
     def validate_config(self):
         """Validate configuration parameters"""
-        required_keys = [
-            'csv_base_dir', 'output_dir', 'checkpoint_dir', 'pressure_levels',
+        common_keys = [
+            'output_dir', 'checkpoint_dir',
             'initialization_lat_range', 'initialization_lon_range', 
             'initialization_pressure_levels', 'initialization_spacing_km',
-            'total_simulation_hours', 'data_interval_hours', 'simulation_step_hours',
+            'simulation_step_hours',
             'output_interval_hours', 'checkpoint_interval_hours', 'data_source', 'output_format'
-            # simulation_start_hour is optional if API mode uses simulation_start_datetime
         ]
         
-        if self.config.get('data_source', '').upper() == "API":
-            required_keys.extend(['api_data_dir', 'simulation_start_datetime']) 
-            # simulation_end_datetime is strongly recommended for API mode but total_simulation_hours can be a fallback
+        required_keys = list(common_keys)
+        
+        source = self.config.get('data_source', '').upper()
+        if source == "API":
+            required_keys.extend(['api_data_dir', 'simulation_start_datetime', 'pressure_levels', 'total_simulation_hours', 'data_interval_hours'])
             if 'simulation_end_datetime' not in self.config and 'total_simulation_hours' not in self.config:
                 raise ValueError("For API mode, either 'simulation_end_datetime' or 'total_simulation_hours' must be provided.")
-        elif self.config.get('data_source', '').upper() == "CSV":
-             # csv_base_dir is already in required_keys
-            pass # No extra keys for CSV if already covered
+        elif source == "CSV":
+             required_keys.extend(['csv_base_dir', 'pressure_levels', 'total_simulation_hours', 'data_interval_hours'])
+        elif source in ["NC", "NETCDF"]:
+             required_keys.extend(['nc_data_dir', 'pressure_levels', 'data_interval_hours'])
+             # total_simulation_hours might be inferred or required? forcing it for now as per other modes logic typically requiring duration
+             if 'total_simulation_hours' not in self.config and 'simulation_end_datetime' not in self.config:
+                 # TODO: Allow inferring from NC file range?
+                 required_keys.append('total_simulation_hours')
 
         for key in required_keys:
             if key not in self.config:
@@ -108,6 +194,10 @@ class HybridParticleTracker:
         output_fmt = self.config['output_format'].upper()
         if output_fmt not in ["CSV", "NETCDF"]:
             raise ValueError(f"Invalid output_format: {self.config['output_format']}. Must be 'CSV' or 'NETCDF'.")
+
+        execution_mode = self.config.get('execution_mode', 'serial').lower()
+        if execution_mode not in ['serial', 'parallel']:
+            raise ValueError(f"Invalid execution_mode: {execution_mode}. Must be 'serial' or 'parallel'.")
     
     def setup_directories(self):
         """Create necessary directories"""
@@ -200,7 +290,7 @@ class HybridParticleTracker:
             # hour_relative_to_csv_start = 5.5 -> index_0based = 1 -> file_index = 2
             csv_file_index_0based = int(np.floor(hour_relative_to_csv_start / data_interval_hours + 1e-9)) # Add small epsilon
             csv_file_hour_index = csv_file_index_0based + 1
-
+            #print(f"DEBUG: CSV mode: absolute_sim_hour={absolute_sim_hour}, csv_actual_start_hour={csv_actual_start_hour}, hour_relative_to_csv_start={hour_relative_to_csv_start}, csv_file_index_0based={csv_file_index_0based}, csv_file_hour_index={csv_file_hour_index}") # DEBUG PRINT
             
             # VelocityDataLoader only loads u,v,w. We'll return None for q,t for CSV.
             # Pass absolute_sim_hour for logging clarity if desired
@@ -210,6 +300,13 @@ class HybridParticleTracker:
                 return u_data, v_data, w_data, None, None # q_data=None, t_data=None
             else:
                 return None
+        elif self.config['data_source'].upper() in ["NC", "NETCDF"]:
+             # For NC, absolute_sim_hour is relative to the start of the simulation datetime (if provided)
+             # or we might need to interpret it.
+             # If using API-style time logic:
+             target_datetime = self.simulation_start_datetime_obj + timedelta(hours=absolute_sim_hour)
+             return self.data_handler.load_velocity_fields_for_timestep(target_datetime)
+
         return None
     
     def create_interpolators(self, velocity_data: Tuple) -> Dict[str, Any]:
@@ -217,11 +314,16 @@ class HybridParticleTracker:
         if velocity_data is None:
             raise ValueError("Cannot create interpolators from None velocity_data.")
 
-        if len(velocity_data) == 5: # u,v,w,q,t (API mode or future CSV with q/t)
+        if len(velocity_data) == 4: # u, v, w, scalars_data
+            u_data, v_data, w_data, scalars_data = velocity_data
+        elif len(velocity_data) == 5: # backward compatibility
             u_data, v_data, w_data, q_data, t_data = velocity_data
-        elif len(velocity_data) == 3: # only u,v,w (older CSV mode if load_velocity_fields_for_timestep was called directly)
+            scalars_data = {}
+            if q_data is not None: scalars_data['q'] = q_data
+            if t_data is not None: scalars_data['t'] = t_data
+        elif len(velocity_data) == 3: # only u,v,w
             u_data, v_data, w_data = velocity_data
-            q_data, t_data = None, None
+            scalars_data = {}
         else:
             raise ValueError("Velocity data tuple has unexpected length.")
         
@@ -237,7 +339,6 @@ class HybridParticleTracker:
         from scipy.interpolate import RegularGridInterpolator
         
         # Reshape data for scipy
-        # At this point, u_data[0], u_data[1], u_data[2] should be valid numpy arrays
         nlat, nlon, npres = len(u_data[0]), len(u_data[1]), len(u_data[2])
 
         if u_data[3] is None:
@@ -251,7 +352,7 @@ class HybridParticleTracker:
         if w_data[3] is None:
             raise ValueError("w_data values (w_data[3]) are None, cannot reshape for w_grid.")
         w_grid = w_data[3].reshape(nlat, nlon, npres)
-
+        
         # Create scipy interpolators (always available as fallback)
         u_interp_scipy = RegularGridInterpolator(
             (u_data[0], u_data[1], u_data[2]), u_grid, bounds_error=False, fill_value=0.0
@@ -262,46 +363,42 @@ class HybridParticleTracker:
         w_interp_scipy = RegularGridInterpolator(
             (w_data[0], w_data[1], w_data[2]), w_grid, bounds_error=False, fill_value=0.0
         )
-        q_interp_scipy = None
-        if q_data:
-            if q_data[3] is not None: # Check if actual values are present
-                q_grid = q_data[3].reshape(nlat, nlon, npres)
-                q_interp_scipy = RegularGridInterpolator(
-                    (q_data[0], q_data[1], q_data[2]), q_grid, bounds_error=False, fill_value=np.nan
-                )
-
-        t_interp_scipy = None
-        if t_data:
-            if t_data[3] is not None: # Check if actual values are present
-                t_grid = t_data[3].reshape(nlat, nlon, npres)
-                t_interp_scipy = RegularGridInterpolator(
-                    (t_data[0], t_data[1], t_data[2]), t_grid, bounds_error=False, fill_value=np.nan
-                )
 
         result = {
             'u': u_interp_scipy, 'v': v_interp_scipy, 'w': w_interp_scipy,
             'u_scipy': u_interp_scipy, 'v_scipy': v_interp_scipy, 'w_scipy': w_interp_scipy,
             'type': 'scipy'
         }
-        
-        if q_interp_scipy:
-            result['q_scipy'] = q_interp_scipy
-        if t_interp_scipy:
-            result['t_scipy'] = t_interp_scipy
+
+        # Build interpolators for all dynamic scalars
+        for s_name, s_data in scalars_data.items():
+            if s_data and s_data[3] is not None:
+                s_grid = s_data[3].reshape(nlat, nlon, npres)
+                result[f'{s_name}_scipy'] = RegularGridInterpolator(
+                    (s_data[0], s_data[1], s_data[2]), s_grid, bounds_error=False, fill_value=np.nan
+                )
 
         # Try to create C++ interpolators if available
         if self.cpp_engine is not None:
             try:
+                print(f"DEBUG C++ Init: Lat range [{u_data[0][0]}, {u_data[0][-1]}], Lon range [{u_data[1][0]}, {u_data[1][-1]}], Pres range [{u_data[2][0]}, {u_data[2][-1]}]")
                 u_interp_cpp = self.cpp_engine.create_interpolator(
-                    u_data[0].tolist(), u_data[1].tolist(), u_data[2].tolist(), u_data[3].tolist()
+                    u_data[0].tolist(), u_data[1].tolist(), u_data[2].tolist(), u_data[3]
                 )
                 v_interp_cpp = self.cpp_engine.create_interpolator(
-                    v_data[0].tolist(), v_data[1].tolist(), v_data[2].tolist(), v_data[3].tolist()
+                    v_data[0].tolist(), v_data[1].tolist(), v_data[2].tolist(), v_data[3]
                 )
                 w_interp_cpp = self.cpp_engine.create_interpolator(
-                    w_data[0].tolist(), w_data[1].tolist(), w_data[2].tolist(), w_data[3].tolist()
+                    w_data[0].tolist(), w_data[1].tolist(), w_data[2].tolist(), w_data[3]
                 )
                 
+                
+                if 't' in scalars_data and scalars_data['t'] is not None:
+                    t_data = scalars_data['t']
+                    result['t_cpp'] = self.cpp_engine.create_interpolator(
+                        t_data[0].tolist(), t_data[1].tolist(), t_data[2].tolist(), t_data[3]
+                    )
+                    
                 # Test C++ interpolators with a sample point
                 test_lat = u_data[0][len(u_data[0])//2]
                 test_lon = u_data[1][len(u_data[1])//2]
@@ -317,12 +414,12 @@ class HybridParticleTracker:
                         'u_cpp': u_interp_cpp, 'v_cpp': v_interp_cpp, 'w_cpp': w_interp_cpp,
                         'type': 'cpp'
                     })
-                    print("✓ Using C++ interpolators")
+                    print("[SUCCESS] Using C++ interpolators")
                 else:
-                    print("⚠ C++ interpolators return zeros, using scipy fallback")
+                    print("[WARNING] C++ interpolators return zeros, using scipy fallback")
                     
             except Exception as e:
-                print(f"⚠ Failed to create C++ interpolators: {e}, using scipy fallback")
+                print(f"[WARNING] Failed to create C++ interpolators: {e}, using scipy fallback")
         
         return result
     
@@ -336,21 +433,27 @@ class HybridParticleTracker:
             interp_next.get('type') == 'cpp'):
             try:
                 # Use C++ engine for fast updates with C++ interpolators
-                particles_list = [list(p) for p in particles]
-                updated_particles = self.cpp_engine.update_particles(
-                    particles_list, alpha,
+                # Optimization: Pass Numpy array directly (Zero-copy)
+                
+                thermo_mode_str = self.config.get('thermo_mode', 'None').upper()
+                t_curr = interp_curr.get('t_cpp')
+                t_next = interp_next.get('t_cpp')
+                bg = self.thermo_bg_interps
+                
+                updated_particles, delta_thermo = self.cpp_engine.update_particles(
+                    particles, alpha,
                     interp_curr['u_cpp'], interp_curr['v_cpp'], interp_curr['w_cpp'],
-                    interp_next['u_cpp'], interp_next['v_cpp'], interp_next['w_cpp']
+                    interp_next['u_cpp'], interp_next['v_cpp'], interp_next['w_cpp'],
+                    thermo_mode_str,
+                    t_curr, t_next,
+                    bg.get('t_mean'), bg.get('t_mean'),
+                    bg.get('grad_t_lat'), bg.get('grad_t_lat'),
+                    bg.get('grad_t_lon'), bg.get('grad_t_lon'),
+                    bg.get('grad_t_p'), bg.get('grad_t_p'),
+                    bg.get('dt_mean_dt'), bg.get('dt_mean_dt')
                 )
-                result = np.array(updated_particles)
                 
-                # Debug: Check if particles actually moved
-                if np.allclose(particles[:5, 1:], result[:5, 1:]):
-                    print("WARNING: C++ engine returned unchanged particles - falling back to Python")
-                    return self._update_particles_python(particles, alpha, interp_curr, interp_next)
-                
-                print("✓ Using C++ engine for particle updates")
-                return result
+                return updated_particles, delta_thermo
             except Exception as e:
                 print(f"C++ engine failed: {e}, falling back to Python")
                 return self._update_particles_python(particles, alpha, interp_curr, interp_next)
@@ -358,6 +461,7 @@ class HybridParticleTracker:
             # Use Python implementation with scipy interpolators
             print("Using Python fallback for particle updates")
             return self._update_particles_python(particles, alpha, interp_curr, interp_next)
+
     
     def _update_particles_python(self, particles, alpha, interp_curr, interp_next):
         """Python fallback for particle updates (slower)"""
@@ -484,6 +588,7 @@ class HybridParticleTracker:
         
         np.savez(filepath,
                  particles=particles,
+                 thermo_states=self.thermo_states if self.thermo_states is not None else np.array([]),
                  current_step=current_step,
                  **self.config)
         print(f"Checkpoint saved to {filepath} at step {current_step}")
@@ -498,32 +603,47 @@ class HybridParticleTracker:
         
         print(f"Loading checkpoint from {filepath}")
         try:
-            data = np.load(filepath)
+            data = np.load(filepath, allow_pickle=True)
             particles = data['particles']
+            if 'thermo_states' in data and data['thermo_states'].size > 0:
+                self.thermo_states = data['thermo_states']
             current_step = data['current_step'].item()
             return particles, current_step
         except Exception as e:
             print(f"ERROR loading checkpoint {filepath}: {e}")
             return None
     
-    def save_particles(self, particles: np.ndarray, time_identifier: Any,
-                       q_values: Optional[np.ndarray] = None,
-                       t_values: Optional[np.ndarray] = None):
-        """Save particle data to CSV or NetCDF format"""
+    def save_particles(self, particles: np.ndarray, time_identifier: Any, 
+                       scalar_values: Optional[Dict[str, np.ndarray]] = None):        
+        """Save particle data to CSV or NetCDF"""
         output_dir = Path(self.config['output_dir'])
         output_format = self.config['output_format'].upper()
 
-        # 'time_identifier' is now correctly used as it's the parameter name
-        filename_time_str = f"{time_identifier:04d}" if isinstance(time_identifier, int) else time_identifier.strftime("%Y%m%d_%H%M%S")
+        if isinstance(time_identifier, int):
+             filename_time_str = f"{time_identifier:04d}" 
+        elif isinstance(time_identifier, float):
+             # For sub-hourly CSV output, use 3 decimal places to distinguish steps (e.g. 0.100)
+             filename_time_str = f"{time_identifier:08.3f}"
+        else:
+             filename_time_str = time_identifier.strftime("%Y%m%d_%H%M%S")
         
         if particles.shape[0] == 0:
             print(f"WARNING: No particles to save for time_identifier {filename_time_str} (output format: {output_format}). Skipping file save.")
             return
 
+        # Variable mapping for output names
+        scalar_map = {
+            'q': ('specific_humidity', 'kg kg-1', 'Specific Humidity'),
+            't': ('temperature', 'K', 'Temperature'),
+            'clwc': ('specific_cloud_liquid_water_content', 'kg kg-1', 'Specific Cloud Liquid Water Content'),
+            'ciwc': ('specific_cloud_ice_water_content', 'kg kg-1', 'Specific Cloud Ice Water Content'),
+            'crwc': ('specific_rain_water_content', 'kg kg-1', 'Specific Rain Water Content'),
+            'cswc': ('specific_snow_water_content', 'kg kg-1', 'Specific Snow Water Content'),
+            'cc': ('fraction_of_cloud_cover', '0-1', 'Fraction of Cloud Cover')
+        }
 
         if output_format == "CSV":
             filename = output_dir / f'particles_output_{filename_time_str}.csv'
-            columns = ['id', 'latitude', 'longitude', 'pressure']
             # Ensure particles array has at least 4 columns before trying to access them
             if particles.shape[1] < 4:
                  raise ValueError(f"Particles array has insufficient columns ({particles.shape[1]}) for standard output.")
@@ -535,10 +655,25 @@ class HybridParticleTracker:
                 'pressure': particles[:, 3]
             }
 
-            if q_values is not None:
-                data_dict['specific_humidity'] = q_values
-            if t_values is not None:
-                data_dict['temperature'] = t_values
+            if scalar_values:
+                for s_key, s_val in scalar_values.items():
+                    if s_val is not None:
+                        col_name = scalar_map.get(s_key, (s_key, '', ''))[0]
+                        data_dict[col_name] = s_val
+
+            # Add thermo states to output
+            if self.thermo_states is not None:
+                mode = self.config.get('thermo_mode', 'None').upper()
+                if mode == 'SIMPLE_SUBTRACTION':
+                    data_dict['delta_t'] = self.thermo_states[:, 0]
+                elif mode == 'POTENTIAL_TEMPERATURE':
+                    data_dict['delta_theta'] = self.thermo_states[:, 0]
+                    data_dict['delta_dse'] = self.thermo_states[:, 1]
+                elif mode == 'FULL_DECOMPOSITION':
+                    data_dict['seasonality_term'] = self.thermo_states[:, 0]
+                    data_dict['advective_term'] = self.thermo_states[:, 1]
+                    data_dict['adiabatic_term'] = self.thermo_states[:, 2]
+                    data_dict['diabatic_term'] = self.thermo_states[:, 3]
 
             df = pd.DataFrame(data_dict)
             df.to_csv(filename, index=False, float_format='%.5f')
@@ -562,12 +697,27 @@ class HybridParticleTracker:
                 'longitude': (('particle_id',), lon_data, {'units': 'degrees_east', 'long_name': 'Longitude'}),
                 'pressure': (('particle_id',), pressure_data, {'units': 'hPa', 'long_name': 'Pressure Level'}),
             }
-            if q_values is not None:
-                q_data_typed = q_values.astype(np.float32)
-                data_vars['specific_humidity'] = (('particle_id',), q_data_typed, {'units': 'kg kg-1', 'long_name': 'Specific Humidity'})
-            if t_values is not None:
-                t_data_typed = t_values.astype(np.float32)
-                data_vars['temperature'] = (('particle_id',), t_data_typed, {'units': 'K', 'long_name': 'Temperature'})
+            
+            if scalar_values:
+                for s_key, s_val in scalar_values.items():
+                    if s_val is not None:
+                        n_info = scalar_map.get(s_key, (s_key, 'unknown', s_key))
+                        s_data_typed = s_val.astype(np.float32)
+                        data_vars[n_info[0]] = (('particle_id',), s_data_typed, {'units': n_info[1], 'long_name': n_info[2]})
+            
+            # Add thermo states to NetCDF output
+            if self.thermo_states is not None:
+                mode = self.config.get('thermo_mode', 'None').upper()
+                if mode == 'SIMPLE_SUBTRACTION':
+                    data_vars['delta_t'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Temperature'})
+                elif mode == 'POTENTIAL_TEMPERATURE':
+                    data_vars['delta_theta'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Potential Temperature'})
+                    data_vars['delta_dse'] = (('particle_id',), self.thermo_states[:, 1].astype(np.float32), {'units': 'J/kg', 'long_name': 'Change in Dry Static Energy'})
+                elif mode == 'FULL_DECOMPOSITION':
+                    data_vars['seasonality_term'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Seasonality Term'})
+                    data_vars['advective_term'] = (('particle_id',), self.thermo_states[:, 1].astype(np.float32), {'units': 'K', 'long_name': 'Advective Term'})
+                    data_vars['adiabatic_term'] = (('particle_id',), self.thermo_states[:, 2].astype(np.float32), {'units': 'K', 'long_name': 'Adiabatic Term'})
+                    data_vars['diabatic_term'] = (('particle_id',), self.thermo_states[:, 3].astype(np.float32), {'units': 'K', 'long_name': 'Diabatic Term'})
 
             coords = {'particle_id': particle_ids_coord}
             if isinstance(time_identifier, datetime):
@@ -616,11 +766,20 @@ class HybridParticleTracker:
 
         # Determine effective start time and total duration
         display_start_info: str  # For user messages
-        initial_output_naming_hour: int # For naming initial outputs
-        if self.config['data_source'].upper() == "API":
-            # simulation_start_hour from config is an offset from simulation_start_datetime_obj
+        initial_output_naming_hour: Any # For naming initial outputs
+        effective_start_datetime = None # Initialize to None
+
+        # Check if we have a valid start datetime object (common to all modes if provided)
+        if self.simulation_start_datetime_obj:
             start_offset_hours = float(self.config.get('simulation_start_hour', 0))
             effective_start_datetime = self.simulation_start_datetime_obj + timedelta(hours=start_offset_hours)
+
+        if self.config['data_source'].upper() == "API":
+            # API mode REQUIRES effective_start_datetime
+            if effective_start_datetime is None:
+                 raise ValueError("Internal Error: effective_start_datetime could not be determined for API mode.")
+            
+            # API specific logic (end date handling)
             
             if 'simulation_end_datetime' in self.config:
                 simulation_end_datetime_obj = datetime.strptime(
@@ -636,13 +795,25 @@ class HybridParticleTracker:
             initial_absolute_step_offset = 0 # Steps are relative to effective_start_datetime
             total_duration_hours = total_sim_duration_from_dates
             initial_output_naming_hour = effective_start_datetime.hour # Hour of the day for initial output
-        else: # CSV
+        else: # CSV or NC
             csv_actual_start_hour = float(self.config.get('simulation_start_hour', 0)) # Default to 0 if not set
-            display_start_info = f"hour {int(csv_actual_start_hour)}"
+            
+            if effective_start_datetime:
+                 display_start_info = f"datetime {effective_start_datetime.strftime('%Y-%m-%d %H:%M:%S')} UTC (NC/CSV mode)"
+                 initial_output_naming_hour = effective_start_datetime
+            else:
+                 display_start_info = f"hour {csv_actual_start_hour:.2f}"
+                 initial_output_naming_hour = csv_actual_start_hour # Keep as float/int
+            
             initial_absolute_step_offset = int(csv_actual_start_hour / sim_step_duration_hours)
-            total_duration_hours = total_duration_hours_config
-            initial_output_naming_hour = int(csv_actual_start_hour)
-            effective_start_datetime = None # To be explicit, not used for CSV time logic
+            # Use total_duration_hours if explicitly set, otherwise we might need logic for end_datetime
+            if 'simulation_end_datetime' in self.config and effective_start_datetime:
+                simulation_end_datetime_obj = datetime.strptime(
+                    self.config['simulation_end_datetime'], "%Y-%m-%d %H:%M:%S"
+                ).replace(tzinfo=timezone.utc)
+                total_duration_hours = (simulation_end_datetime_obj - effective_start_datetime).total_seconds() / 3600.0
+            else:
+                total_duration_hours = total_duration_hours_config
 
 
         # These will be determined by checkpoint or new simulation settings
@@ -662,9 +833,9 @@ class HybridParticleTracker:
                 if saved_completed_step == initial_absolute_step_offset - 1:
                     # Checkpoint is for the state *before* the first step of this configured run.
                     # The "output" corresponding to this is the initial state.
-                    if self.config['data_source'].upper() == "API":
+                    if effective_start_datetime:
                         last_saved_output_hour = effective_start_datetime.timestamp() / 3600.0
-                    else: # CSV
+                    else: # CSV legacy without start time
                         last_saved_output_hour = float(initial_output_naming_hour) 
                 elif saved_completed_step >= 0:
                     # Calculate the absolute time (in hours) at the end of the saved_completed_step
@@ -675,13 +846,19 @@ class HybridParticleTracker:
                         abs_hour_at_checkpoint_end_val = checkpoint_datetime.timestamp() / 3600.0
                     else: # CSV
                         abs_hour_at_checkpoint_end_val = csv_actual_start_hour + hours_elapsed_at_checkpoint_end
+                    
                     # Find the last output interval that was met or passed by this time
-                    last_saved_output_hour = (np.floor(abs_hour_at_checkpoint_end_val) // self.config['output_interval_hours']) * self.config['output_interval_hours']
+                    # Logic needed to be robust for floats: floor(time / interval) * interval
+                    interval = self.config['output_interval_hours']
+                    last_saved_output_hour = np.floor((abs_hour_at_checkpoint_end_val + 1e-7) / interval) * interval
                 
                 print(f"Resuming from absolute simulation step {loop_start_step}. Last output hour: {last_saved_output_hour}.")
             else:
                 print(f"No checkpoint found, starting new simulation from configured {display_start_info}.")
-                last_saved_output_hour = (effective_start_datetime.timestamp() / 3600.0) if self.config['data_source'].upper() == "API" else float(initial_output_naming_hour)
+                if effective_start_datetime:
+                     last_saved_output_hour = effective_start_datetime.timestamp() / 3600.0
+                else:
+                     last_saved_output_hour = float(initial_output_naming_hour)
         
         # Initialize particles if not loaded from checkpoint
         if self.particles is None:
@@ -691,10 +868,13 @@ class HybridParticleTracker:
             #self.save_particles(self.particles, initial_output_naming_hour)
             #self.visualizer.plot_particles(self.particles, initial_output_naming_hour, initial_absolute_step_offset)
             initial_time_identifier_for_output: Any
-            if self.config['data_source'].upper() == "API":
-                initial_time_identifier_for_output = effective_start_datetime
-            else: # CSV
-                initial_time_identifier_for_output = initial_output_naming_hour
+            # Always try to use datetime for output naming if we have a valid start time
+            # This ensures consistent YYYYMMDD_HHMMSS formatting for NC/CSV/API
+            if effective_start_datetime:
+                 initial_time_identifier_for_output = effective_start_datetime
+            else:
+                 # Fallback only if no start time provided (unlikely with current config)
+                 initial_time_identifier_for_output = initial_output_naming_hour
             
             self.save_particles(self.particles, initial_time_identifier_for_output)
             # Pass plot ranges from config
@@ -797,7 +977,15 @@ class HybridParticleTracker:
             
             # Update particles
             try:
-                self.particles = self.update_particles(self.particles, alpha, interp_curr, interp_next)
+                res = self.update_particles(self.particles, alpha, interp_curr, interp_next)
+                if isinstance(res, tuple):
+                    self.particles, delta_thermo = res
+                    if self.config.get('thermo_mode', 'None').upper() != 'NONE' and delta_thermo.size > 0:
+                        if self.thermo_states is None:
+                            self.thermo_states = np.zeros_like(delta_thermo)
+                        self.thermo_states += delta_thermo
+                else:
+                    self.particles = res
             except Exception as e:
                 print(f"ERROR during particle update at step {step}: {e}")
                 self.save_checkpoint(self.particles, step - 1)
@@ -812,56 +1000,72 @@ class HybridParticleTracker:
             
             current_absolute_sim_hour_at_step_end = 0
             time_identifier_for_output: Any # For filenames and plot titles (int for CSV, datetime for API)
-            # Calculate alpha for q and t interpolation at the end of the step
-            # This alpha is relative to the data interval of interp_curr and interp_next
-            # hours_elapsed_since_effective_start is the time at the *end* of the current step
-            alpha_for_scalars = np.clip(
-                (hours_elapsed_since_effective_start - current_data_hour) / self.config['data_interval_hours'],
-                0.0, 1.0
-            )
-
-            # Interpolate q and t values
-            q_final_values = None
-            t_final_values = None
-
-            if interp_curr.get('q_scipy') and interp_next.get('q_scipy'):
-                try:
-                    q_curr_vals = interp_curr['q_scipy'](self.particles[:, 1:4]) # lat, lon, pressure
-                    q_next_vals = interp_next['q_scipy'](self.particles[:, 1:4])
-                    q_final_values = (1.0 - alpha_for_scalars) * q_curr_vals + alpha_for_scalars * q_next_vals
-                    q_final_values = np.nan_to_num(q_final_values, nan=np.nan) # Keep NaNs if fill_value was NaN
-                except Exception as e_q_interp:
-                    print(f"WARNING: Error during q interpolation at step {step}: {e_q_interp}. Skipping q values.")
-            elif self.config['data_source'].upper() == "API": # Only warn if API mode, as CSV mode doesn't load q/t
-                print(f"WARNING: q_scipy interpolator not available at step {step}. Skipping q calculation.")
-
-            if interp_curr.get('t_scipy') and interp_next.get('t_scipy'):
-                try:
-                    t_curr_vals = interp_curr['t_scipy'](self.particles[:, 1:4])
-                    t_next_vals = interp_next['t_scipy'](self.particles[:, 1:4])
-                    t_final_values = (1.0 - alpha_for_scalars) * t_curr_vals + alpha_for_scalars * t_next_vals
-                    t_final_values = np.nan_to_num(t_final_values, nan=np.nan) # Keep NaNs if fill_value was NaN
-                except Exception as e_t_interp:
-                    print(f"WARNING: Error during t interpolation at step {step}: {e_t_interp}. Skipping t values.")
-            elif self.config['data_source'].upper() == "API":
-                print(f"WARNING: t_scipy interpolator not available at step {step}. Skipping t calculation.")
 
             # Determine time identifier for output naming
-            if self.config['data_source'].upper() == "API":
+            # Always prefer datetime object for consistent YYYYMMDD_HHMMSS filenames
+            # regardless of data source (API, NC, CSV)
+            if effective_start_datetime:
+                # Calculate datetime based on elapsed hours
                 completed_datetime_obj = effective_start_datetime + timedelta(hours=hours_elapsed_since_effective_start)
-                time_identifier_for_output = completed_datetime_obj
+                time_identifier_for_output = completed_datetime_obj 
+                
+                # Update current absolute sim hour (used for loop control/interpolation)
                 current_absolute_sim_hour_at_step_end = completed_datetime_obj.timestamp() / 3600.0
-            else: # CSV
-                current_absolute_sim_hour_at_step_end = float(csv_actual_start_hour + hours_elapsed_since_effective_start)
-                time_identifier_for_output = int(np.floor(current_absolute_sim_hour_at_step_end))
+            else:
+                # Fallback implementation (mostly for legacy CSV without start date)
+                if self.config['data_source'].upper() == "API":
+                     # Should have been covered by effective_start_datetime check
+                     completed_datetime_obj = effective_start_datetime + timedelta(hours=hours_elapsed_since_effective_start)
+                     time_identifier_for_output = completed_datetime_obj
+                     current_absolute_sim_hour_at_step_end = completed_datetime_obj.timestamp() / 3600.0
+                else: 
+                     # CSV/NC without real start date -> use float hours
+                     current_absolute_sim_hour_at_step_end = float(csv_actual_start_hour + hours_elapsed_since_effective_start)
+                     time_identifier_for_output = current_absolute_sim_hour_at_step_end
 
             # Check if it's time to save output
-            if (np.floor(current_absolute_sim_hour_at_step_end) > np.floor(last_saved_output_hour) and 
-                int(np.floor(current_absolute_sim_hour_at_step_end)) % self.config['output_interval_hours'] == 0):
-                #self.save_particles(self.particles, output_naming_hour) # Use hour of day for API, absolute for CSV for filename
-                #self.visualizer.plot_particles(self.particles, output_naming_hour, step + 1) 
+            # Use strict epsilon check for float intervals
+            output_interval = self.config['output_interval_hours']
+            
+            # Check if current time is a multiple of output interval (within small epsilon)
+            # AND if we have advanced past the last saved time
+            is_output_time = False
+            
+            # Divide by interval and check closeness to nearest integer
+            ratio = current_absolute_sim_hour_at_step_end / output_interval
+            nearest_multiple = round(ratio)
+            if abs(ratio - nearest_multiple) < 1e-5:
+                 # It is an output step. Ensure we haven't already saved this time.
+                 # Using epsilon for time comparison
+                 if current_absolute_sim_hour_at_step_end > (last_saved_output_hour + 1e-7):
+                     is_output_time = True
+
+            if is_output_time:
+                # Interpolate Scalar Data only when saving output
+                # Calculate alpha for scalar interpolation at the end of the step
+                alpha_for_scalars = np.clip(
+                    (hours_elapsed_since_effective_start - current_data_hour) / self.config['data_interval_hours'],
+                    0.0, 1.0
+                )
+
+                final_scalars = {}
+                # Dynamically find any loaded scalar interpolators ending with '_scipy' 
+                # (excluding the base u, v, w)
+                expected_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
+                
+                for s_key in expected_scalars:
+                    interp_key = f"{s_key}_scipy"
+                    if interp_curr.get(interp_key) and interp_next.get(interp_key):
+                        try:
+                            s_curr_vals = interp_curr[interp_key](self.particles[:, 1:4])
+                            s_next_vals = interp_next[interp_key](self.particles[:, 1:4])
+                            s_final = (1.0 - alpha_for_scalars) * s_curr_vals + alpha_for_scalars * s_next_vals
+                            final_scalars[s_key] = np.nan_to_num(s_final, nan=np.nan)
+                        except Exception as e_s:
+                            print(f"WARNING: '{s_key}' interpolation failed at output step {step}: {e_s}")
+
                 # Pass the appropriate time identifier for naming
-                self.save_particles(self.particles, time_identifier_for_output, q_values=q_final_values, t_values=t_final_values) 
+                self.save_particles(self.particles, time_identifier_for_output, scalar_values=final_scalars) 
                 # Plotting with the time identifier for output
                 # Pass plot ranges from config
                 plot_lat_range_config = self.config.get('plot_lat_range')
@@ -884,26 +1088,30 @@ class HybridParticleTracker:
         if 'step' in locals(): # Ensure loop ran at least once
             final_hours_elapsed_since_effective_start = (step - initial_absolute_step_offset + 1) * sim_step_duration_hours
             final_time_identifier_for_output: Any
-            # Interpolate q and t for the final state
+            # Interpolate scalars for the final state
             final_alpha_for_scalars = np.clip(
-                #(final_sim_hours_elapsed - current_data_hour) / self.config['data_interval_hours'], 0.0, 1.0
                 (final_hours_elapsed_since_effective_start - current_data_hour) / self.config['data_interval_hours'], 0.0, 1.0
              )
-            final_q_values, final_t_values = None, None
-            if 'q_scipy' in interp_curr and 'q_scipy' in interp_next and interp_curr['q_scipy'] and interp_next['q_scipy']:
-                final_q_values = (1.0 - final_alpha_for_scalars) * interp_curr['q_scipy'](self.particles[:, 1:4]) + \
-                                 final_alpha_for_scalars * interp_next['q_scipy'](self.particles[:, 1:4])
-                final_q_values = np.nan_to_num(final_q_values, nan=0.0)
-            if 't_scipy' in interp_curr and 't_scipy' in interp_next and interp_curr['t_scipy'] and interp_next['t_scipy']:
-                final_t_values = (1.0 - final_alpha_for_scalars) * interp_curr['t_scipy'](self.particles[:, 1:4]) + \
-                                 final_alpha_for_scalars * interp_next['t_scipy'](self.particles[:, 1:4])
-                final_t_values = np.nan_to_num(final_t_values, nan=0.0)
+            
+            final_scalars = {}
+            expected_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
+            
+            for s_key in expected_scalars:
+                interp_key = f"{s_key}_scipy"
+                if interp_key in interp_curr and interp_key in interp_next and interp_curr[interp_key] and interp_next[interp_key]:
+                    try:
+                        s_curr_vals = interp_curr[interp_key](self.particles[:, 1:4])
+                        s_next_vals = interp_next[interp_key](self.particles[:, 1:4])
+                        s_final = (1.0 - final_alpha_for_scalars) * s_curr_vals + final_alpha_for_scalars * s_next_vals
+                        final_scalars[s_key] = np.nan_to_num(s_final, nan=0.0)
+                    except Exception as e_s:
+                        print(f"WARNING: '{s_key}' final interpolation failed: {e_s}")
 
             if self.config['data_source'].upper() == "API":
                 final_time_identifier_for_output = (effective_start_datetime + timedelta(hours=final_hours_elapsed_since_effective_start))
             else: # CSV
                 final_time_identifier_for_output = int(np.floor(csv_actual_start_hour + final_hours_elapsed_since_effective_start))
-            self.save_particles(self.particles, final_time_identifier_for_output, q_values=final_q_values, t_values=final_t_values)
+            self.save_particles(self.particles, final_time_identifier_for_output, scalar_values=final_scalars)
             # Pass plot ranges from config for final plot
             plot_lat_range_config = self.config.get('plot_lat_range')
             plot_lon_range_config = self.config.get('plot_lon_range')

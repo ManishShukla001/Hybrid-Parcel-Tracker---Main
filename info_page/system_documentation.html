@@ -82,6 +82,7 @@
                 <ul>
                     <li><a href="#csv-data">4.1. CSV Data</a></li>
                     <li><a href="#api-data">4.2. API Data</a></li>
+                    <li><a href="#nc-data">4.3. NetCDF Data</a></li>
                 </ul>
             </li>
             <li><a href="#particle-initialization">5. Parcel Initialization</a></li>
@@ -99,16 +100,17 @@
             </li>
             <li><a href="#boundary-conditions">9. Boundary Conditions</a></li>
             <li><a href="#scalar-transport">10. Scalar Transport</a></li>
-            <li><a href="#output">11. Output</a></li>
-            <li><a href="#visualization">12. Visualization</a></li>
-            <li><a href="#cpp-engine">13. C++ Engine</a></li>
-            <li><a href="#build-process">14. Build Process</a></li>
-            <li><a href="#testing">15. Testing and Consistency</a></li>
-            <li><a href="#conclusion">16. Conclusion</a></li>
+            <li><a href="#thermo-tracking">11. Thermodynamic Tracking</a></li>
+            <li><a href="#output">12. Output</a></li>
+            <li><a href="#visualization">13. Visualization</a></li>
+            <li><a href="#cpp-engine">14. C++ Engine</a></li>
+            <li><a href="#build-process">15. Build Process</a></li>
+            <li><a href="#testing">16. Testing and Consistency</a></li>
+            <li><a href="#conclusion">17. Conclusion</a></li>
         </ul>
         <div style="margin-top: 20px; border-top: 1px solid #34495e; padding-top: 10px;">
             <p><a href="../README.md" style="color: #3498db; text-decoration: none;">← Back to README.md</a></p>
-            <p><a href=".." style="color: #3498db; text-decoration: none;">← Back to Repository</a></p>
+            <p><a href="https://github.com/ManishShukla001/Hybrid-Parcel-Tracker---Main" style="color: #3498db; text-decoration: none;">← Back to Repository</a></p>
         </div>
     </div>
 
@@ -132,14 +134,18 @@
                     <li><strong>C++ Particle Engine (<code>particle_engine_cpp</code> module):</strong> A compiled C++ extension (using Pybind11) that performs computationally intensive tasks. It includes:
                         <ul>
                             <li><code>ParticleEngine</code>: Main C++ class callable from Python.</li>
-                            <li><code>RK4Integrator</code>: Implements the Runge-Kutta 4th order method for particle advection.</li>
-                            <li><code>RegularGrid3DInterpolator</code>: Performs 3D trilinear interpolation of velocity fields.</li>
+                            <li><code>RK4Integrator</code>: Implements serial Runge-Kutta 4th order integration.</li>
+                            <li><code>RK4IntegratorParallel</code>: Coordinates multi-threaded RK4 integration using OpenMP.</li>
+                            <li><code>RegularGrid3DInterpolator</code>: Performs fast 3D trilinear interpolation of velocity fields.</li>
+                            <li><code>ThermoState</code>: Implements thermodynamic tracking and Papritz &amp; Röthlisberger decomposition integrations.</li>
                         </ul>
                     </li>
                     <li><strong>Data Handlers:</strong>
                         <ul>
-                            <li><strong>CSV Data Loader (<code>data_loader.py</code> - <code>VelocityDataLoader</code> class):</strong> Responsible for loading velocity data from pre-processed CSV files, where each file typically represents a specific variable (u, v, w) at a specific pressure level and time.</li>
-                            <li><strong>API Data Handler (<code>api_data_handler.py</code> - <code>APIDataHandler</code> class):</strong> Manages downloading and processing of meteorological data (e.g., ERA5) from online APIs like the Copernicus Climate Data Store (CDS). It handles NetCDF files.</li>
+                            <li><strong>CSV Data Loader (<code>data_loader.py</code> - <code>VelocityDataLoader</code> class):</strong> Loads velocity components from individual CSV grids.</li>
+                            <li><strong>NetCDF Data Loader (<code>nc_data_loader.py</code> - <code>NCDataLoader</code> class):</strong> Handles scanning and loading of multi-variable NetCDF dataset files (e.g., HRRR/ERA5 files).</li>
+                            <li><strong>API Data Handler (<code>api_data_handler.py</code> - <code>APIDataHandler</code> class):</strong> Manages downloading and processing of meteorological data from Copernicus CDS API.</li>
+                            <li><strong>Climatology Background Downloader (<code>data_downloader_method2.py</code>):</strong> Companion downloader utility that queries historical baseline windows from CDS API to compute mean temperature fields ($\overline{T}$) and their gradients.</li>
                         </ul>
                     </li>
                     <li><strong>Visualization (<code>visualization.py</code> - <code>ParticleVisualizer</code> class):</strong> Generates plots of particle positions, trajectories, and other diagnostic information using Matplotlib and Cartopy.</li>
@@ -155,15 +161,19 @@
                         <tr><th>Parameter</th><th>Description</th></tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>data_source</code></td><td>Specifies data source: "CSV" or "API".</td></tr>
-                        <tr><td><code>csv_base_dir</code> / <code>api_data_dir</code></td><td>Base directory for input data files.</td></tr>
+                        <tr><td><code>data_source</code></td><td>Specifies data source: "CSV", "API", or "NC" / "NETCDF".</td></tr>
+                        <tr><td><code>csv_base_dir</code> / <code>api_data_dir</code> / <code>nc_data_dir</code></td><td>Base directories for input data files.</td></tr>
+                        <tr><td><code>nc_file_pattern</code></td><td>Optional name matching pattern for NetCDF data loading (e.g. combined_YYYYMMDD_HH.nc).</td></tr>
+                        <tr><td><code>execution_mode</code></td><td>Execution path configuration: "serial" or "parallel" (enables OpenMP acceleration).</td></tr>
+                        <tr><td><code>thermo_mode</code></td><td>Thermodynamic tracking style: "NONE", "SIMPLE_SUBTRACTION", "POTENTIAL_TEMPERATURE", or "FULL_DECOMPOSITION".</td></tr>
+                        <tr><td><code>thermo_bg_file</code></td><td>Path to NetCDF containing pre-computed climatological background data for full anomaly decomposition.</td></tr>
                         <tr><td><code>output_dir</code> / <code>checkpoint_dir</code></td><td>Directories for simulation outputs and checkpoints.</td></tr>
-                        <tr><td><code>pressure_levels</code></td><td>List of pressure levels (hPa) present in the input data.</td></tr>
+                        <tr><td><code>pressure_levels</code></td><td>List of pressure levels (hPa) present in the input data. (In NC mode, extracted automatically).</td></tr>
                         <tr><td><code>initialization_lat_range</code>, <code>initialization_lon_range</code></td><td>Latitude and longitude bounds for initial particle placement.</td></tr>
                         <tr><td><code>initialization_pressure_levels</code></td><td>Pressure levels at which particles are initialized.</td></tr>
                         <tr><td><code>initialization_spacing_km</code></td><td>Desired approximate physical spacing (in km) between initialized particles.</td></tr>
-                        <tr><td><code>simulation_start_datetime</code> / <code>simulation_end_datetime</code></td><td>Start and end UTC date-times for API mode.</td></tr>
-                        <tr><td><code>simulation_start_hour</code></td><td>Absolute hour to start simulation (CSV mode) or offset from <code>simulation_start_datetime</code> (API mode).</td></tr>
+                        <tr><td><code>simulation_start_datetime</code> / <code>simulation_end_datetime</code></td><td>Start and end UTC date-times for API and NC modes.</td></tr>
+                        <tr><td><code>simulation_start_hour</code></td><td>Absolute hour to start simulation (CSV mode) or offset from <code>simulation_start_datetime</code> (API/NC modes).</td></tr>
                         <tr><td><code>total_simulation_hours</code></td><td>Total duration of the simulation in hours.</td></tr>
                         <tr><td><code>data_interval_hours</code></td><td>Frequency (in hours) at which new velocity data files are available.</td></tr>
                         <tr><td><code>simulation_step_hours</code></td><td>Time step (in hours) for particle position updates (dt).</td></tr>
@@ -229,6 +239,15 @@
                         </ul>
                     </li>
                     <li><strong>Output:</strong> Returns tuples containing coordinate arrays (lats, lons, pressures) and the flattened data values for u, v, w, q (specific humidity), and t (temperature). Missing q or t variables are handled gracefully.</li>
+                </ul>
+
+                <h3 id="nc-data">4.3. NetCDF Data (<code>NCDataLoader</code>)</h3>
+                <p>When <code>data_source</code> is "NC" or "NETCDF", the <code>NCDataLoader</code> class is used. This enables direct simulation on multi-variable NetCDF datasets (such as combined HRRR/ERA5 files).</p>
+                <ul>
+                    <li><strong>File Discovery:</strong> Scans the directory specified in <code>nc_data_dir</code>. It matches file naming conventions (defaulting to <code>combined_YYYYMMDD_HH.nc</code>) using regular expressions to construct a chronological map of datasets.</li>
+                    <li><strong>Automatic Metadata Extraction:</strong> Reads the first discovered NetCDF file to parse latitude, longitude, and pressure level coordinates, automatically injecting these coordinates into the simulation configuration.</li>
+                    <li><strong>Data Alignment:</strong> Checks dimension names ('latitude' vs 'lat', 'longitude' vs 'lon', 'level' vs 'pressure') and automatically transposes arrays to a standard <code>(latitude, longitude, pressure)</code> order.</li>
+                    <li><strong>Output formatting:</strong> Replaces missing NaN values with zero and flattens arrays into a row-major 1D structure for C++ bindings. Dynamic scalars (such as <code>q</code>, <code>t</code>, <code>clwc</code>, etc.) are extracted alongside core velocities if present in the NetCDF.</li>
                 </ul>
             </section>
 
@@ -326,7 +345,8 @@
 
             <section id="particle-advection-rk4">
                 <h2>8. Particle Advection (Runge-Kutta 4th Order)</h2>
-                <p>The particle's new position is calculated by integrating its velocity over the simulation time step (<code>dt_seconds</code>). The Runge-Kutta 4th order (RK4) method is employed for its balance of accuracy and computational cost. This is implemented in <code>RK4Integrator.cpp</code> and has a Python fallback in <code>particle_tracker.py</code>.</p>
+                <p>The particle's new position is calculated by integrating its velocity over the simulation time step (<code>dt_seconds</code>). The Runge-Kutta 4th order (RK4) method is employed for its balance of accuracy and computational cost. This is implemented in serial (<code>rk4_integrator.cpp</code>) and parallel (<code>rk4_integrator_parallel.cpp</code>) C++ structures, with a Python fallback in <code>particle_tracker.py</code>.</p>
+                <p class="note"><strong>OpenMP Multi-threading:</strong> When <code>execution_mode</code> is set to "parallel", HPT schedules the advection of particle batches concurrently using OpenMP threads. Thread count is controlled dynamically by the <code>OMP_NUM_THREADS</code> environment variable, enabling optimal performance scalability on multi-core CPU architectures.</p>
                 <div class="diagram-container"><iframe id="iframe-rk4-advection" src="./Hybrid Particle Tracker - System Documentation_files/rk4_diagram.html" title="RK4 Advection Method Diagram"></iframe></div>
                 <p>Given a particle's current position <code>P<sub>n</sub> = (lat<sub>n</sub>, lon<sub>n</sub>, pressure<sub>n</sub>)</code> at time <code>t<sub>n</sub></code>, its new position <code>P<sub>n+1</sub></code> at <code>t<sub>n</sub> + dt</code> is found by:
                 </p><div class="formula">
@@ -399,21 +419,61 @@
                 </ul>
             </section>
 
+            <section id="thermo-tracking">
+                <h2>11. Thermodynamic Tracking</h2>
+                <p>The HPT framework allows tracking thermodynamic indicators along the trajectories of parcels to identify physical heating/cooling mechanisms.</p>
+                <ul>
+                    <li><strong>Method 0: Simple Subtraction (<code>SIMPLE_SUBTRACTION</code>)</strong><br>
+                        Tracks raw temperature changes between time steps:
+                        <div class="formula"><code>ΔT = T(t) - T(t<sub>0</sub>)</code></div>
+                    </li>
+                    <li><strong>Method 1: Potential Temperature &amp; Dry Static Energy (<code>POTENTIAL_TEMPERATURE</code>)</strong><br>
+                        Factors out adiabatic expansion/compression along the trajectory:
+                        <ul>
+                            <li>Potential Temperature ($\theta$):
+                                <div class="formula"><code>θ = T ⋅ (P<sub>0</sub> / P)<sup>κ</sup></code></div>
+                                where $P_0 = 1000$ hPa and $\kappa \approx 0.286$ ($R/C_p$).
+                            </li>
+                            <li>Dry Static Energy (DSE):
+                                <div class="formula"><code>DSE = C<sub>p</sub> ⋅ T + g ⋅ z</code></div>
+                                where $C_p = 1004 \text{ J kg}^{-1}\text{K}^{-1}$, $g = 9.81 \text{ m s}^{-2}$, and $z$ is geopotential height.
+                            </li>
+                        </ul>
+                        The tracker computes changes $\Delta\theta$ and $\Delta DSE$ to isolate non-adiabatic diabatic cooling/heating processes.
+                    </li>
+                    <li><strong>Method 2: Full Anomaly Decomposition (<code>FULL_DECOMPOSITION</code>)</strong><br>
+                        Implements the Papritz &amp; Röthlisberger method to decompose temperature anomalies ($T'$) into four physical drivers integrated over the trajectory using numerical trapezoidal integration:
+                        <div class="formula">
+                            <code>T'(x,t) - T'(x<sub>0</sub>,t<sub>0</sub>) = Seasonality + Advection + Adiabatic + Diabatic</code>
+                        </div>
+                        Where:
+                        <ul>
+                            <li><strong>Seasonality:</strong> $-\int \frac{\partial \overline{T}}{\partial t} d\tau$</li>
+                            <li><strong>Advective:</strong> $-\int \mathbf{v} \cdot \nabla_h \overline{T} d\tau$</li>
+                            <li><strong>Adiabatic:</strong> $\int \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau$</li>
+                            <li><strong>Diabatic:</strong> $\int \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau$</li>
+                        </ul>
+                        This method requires pre-processed climatology background data ($\overline{T}$ and its spatial/temporal gradients) provided via the <code>thermo_bg_file</code> configuration.
+                    </li>
+                </ul>
+            </section>
+
             <section id="output">
-                <h2>11. Output (<code>HybridParticleTracker.save_particles</code>)</h2>
+                <h2>12. Output (<code>HybridParticleTracker.save_particles</code>)</h2>
                 <p>Particle data is saved at specified <code>output_interval_hours</code>.</p>
                 <ul>
                     <li><strong>CSV Format:</strong>
                         <ul>
                             <li>A CSV file is created for each output time.</li>
                             <li>Columns typically include: 'id', 'latitude', 'longitude', 'pressure', and optionally 'specific_humidity', 'temperature'.</li>
+                            <li>When thermodynamic modes are active, columns also include `delta_t`, `delta_theta`, `delta_dse`, or the four decomposed drivers (seasonality, advection, adiabatic, diabatic terms).</li>
                         </ul>
                     </li>
                     <li><strong>NetCDF Format:</strong>
                         <ul>
                             <li>An Xarray Dataset is created with particle data.</li>
                             <li>Coordinates: 'particle_id' and optionally 'time'.</li>
-                            <li>Data Variables: 'latitude', 'longitude', 'pressure', 'specific_humidity', 'temperature', with appropriate units and long names as attributes.</li>
+                            <li>Data Variables: 'latitude', 'longitude', 'pressure', 'specific_humidity', 'temperature', and thermodynamic tracking terms (e.g. `delta_theta`, `delta_dse`, or seasonality, advection, adiabatic, and diabatic anomaly drivers), with appropriate units and long names as attributes.</li>
                             <li><code>_FillValue</code> (typically NaN for floats) and <code>dtype</code> are specified in the encoding for robust NetCDF writing.</li>
                             <li>Global attributes like 'creation_date' and 'source_script' are included.</li>
                             <li>Saved using <code>ds.to_netcdf(filename, engine="netcdf4", encoding=...)</code>.</li>
@@ -423,7 +483,7 @@
             </section>
 
             <section id="visualization">
-                <h2>12. Visualization (<code>ParticleVisualizer</code>)</h2>
+                <h2>13. Visualization (<code>ParticleVisualizer</code>)</h2>
                 <p>The <code>ParticleVisualizer</code> class uses Matplotlib and Cartopy to create geographical plots.</p>
                 <ul>
                     <li><strong>Particle Positions (<code>plot_particles</code>):</strong>
@@ -447,48 +507,53 @@
             </section>
 
             <section id="cpp-engine">
-                <h2>13. C++ Engine (<code>particle_engine_cpp</code>)</h2>
+                <h2>14. C++ Engine (<code>particle_engine_cpp</code>)</h2>
                 <p>The C++ engine is designed for performance-critical parts of the simulation.</p>
                 <ul>
                     <li><strong>Pybind11:</strong> Used to create Python bindings for the C++ classes, allowing them to be called directly from Python.</li>
                     <li><strong><code>ParticleEngine</code> (C++ class):</strong>
                         <ul>
                             <li>Main interface exposed to Python.</li>
-                            <li>Contains methods like <code>initialize_particles</code>, <code>create_interpolator</code>, and <code>update_particles</code> (which takes a batch of particles).</li>
+                            <li>Contains methods like <code>initialize_particles</code>, <code>create_interpolator</code>, and <code>update_particles</code> (which takes a batch of particles and thermodynamic options).</li>
                         </ul>
                     </li>
                     <li><strong><code>RegularGrid3DInterpolator</code> (C++ class):</strong>
                         <ul>
                             <li>Stores the 3D gridded data (e.g., u, v, w) and its coordinate axes.</li>
                             <li>Implements trilinear interpolation (<code>interpolate(lat, lon, pressure)</code> method).</li>
-                            <li>Handles boundary checks and fill values. Coordinates are internally normalized to `[0,1]` for interpolation.</li>
+                            <li>Handles boundary checks and fill values. Coordinates are internally normalized for interpolation.</li>
                         </ul>
                     </li>
                     <li><strong><code>RK4Integrator</code> (C++ class):</strong>
                         <ul>
-                            <li>Implements the RK4 algorithm (<code>integrate_particle</code> method for a single particle, and <code>integrate_batch</code> for multiple).</li>
-                            <li>Its <code>get_velocity</code> method performs the temporal and spatial interpolation (using passed <code>RegularGrid3DInterpolator</code> objects) and calculates coordinate derivatives, including polar singularity handling.</li>
-                            <li>Applies global boundary conditions (latitude clamping, longitude wrapping, pressure clamping) after calculating the new position.</li>
+                            <li>Implements the RK4 algorithm (<code>integrate_particle</code> method for serial particle advection).</li>
+                            <li>Contains polar singularity handling and global boundary clamping/wrapping logic.</li>
+                        </ul>
+                    </li>
+                    <li><strong><code>RK4IntegratorParallel</code> (C++ class):</strong>
+                        <ul>
+                            <li>Implements OpenMP multi-threaded RK4 advection (<code>integrate_batch</code> method) to process large batches of particles concurrently across available CPU threads.</li>
+                        </ul>
+                    </li>
+                    <li><strong><code>ThermoState</code> (C++ structure):</strong>
+                        <ul>
+                            <li>Implements the thermodynamic integration algorithms (Simple, Potential Temp / DSE, and the 4-integral Papritz &amp; Röthlisberger decomposition via numerical trapezoidal integration) calculated along each parcel trajectory step.</li>
                         </ul>
                     </li>
                 </ul>
             </section>
 
             <section id="build-process">
-                <h2>14. Build Process (<code>setup.py</code>)</h2>
+                <h2>15. Build Process (<code>build.py</code> / <code>setup.py</code>)</h2>
                 <p>The C++ components are compiled into a Python extension module using <code>setuptools</code> and <code>pybind11</code>.</p>
                 <ul>
-                    <li><code>setup.py</code> defines a <code>Pybind11Extension</code> named <code>particle_engine_cpp</code>.</li>
-                    <li>It lists the C++ source files (<code>particle_engine.cpp</code>, <code>interpolator.cpp</code>, <code>rk4_integrator.cpp</code>).</li>
-                    <li>Includes paths to Pybind11 and NumPy headers.</li>
-                    <li>Specifies C++ standard (e.g., C++17).</li>
-                    <li>Defines macros like <code>_USE_MATH_DEFINES</code> for Windows compatibility (to get <code>M_PI</code>).</li>
-                    <li>Running <code>python setup.py build_ext --inplace</code> or <code>pip install .</code> compiles the C++ code and makes the <code>particle_engine_cpp</code> module importable in Python.</li>
+                    <li><code>setup.py</code> defines a <code>Pybind11Extension</code> named <code>particle_engine_cpp</code>, listing source files (including parallel integration and thermodynamic module files) and configuring compile-time flags for OpenMP (e.g., <code>/openmp</code> on Windows, <code>-fopenmp</code> on Linux).</li>
+                    <li><strong>Unified Build Script (<code>build.py</code>):</strong> Cleans old build directories, uninstalls any conflicting versions, installs dependencies from <code>requirements.txt</code>, compiles/installs the package in editable mode (<code>pip install -e .</code>), and runs a comprehensive load test validation on both C++ and Python elements.</li>
                 </ul>
             </section>
             
             <section id="testing">
-                <h2>15. Testing and Consistency (<code>test_simulation_consistency.py</code>)</h2>
+                <h2>16. Testing and Consistency (<code>test_simulation_consistency.py</code>)</h2>
                 <p>A dedicated test script, <code>test_simulation_consistency.py</code>, is provided to compare the results of the C++ RK4 implementation against a pure Python/Scipy RK4 implementation.</p>
                 <ul>
                     <li>It initializes a small number of particles and loads a few time steps of data.</li>
@@ -506,7 +571,7 @@
             </section>
 
             <section id="conclusion">
-                <h2>16. Conclusion</h2>
+                <h2>17. Conclusion</h2>
                 <p>The Hybrid Parcel Tracker provides a robust and efficient framework for Lagrangian parcel simulations. By combining C++ for core computations and Python for high-level control and data management, it aims to offer both performance and flexibility. The system includes detailed data handling for CSV and API sources, a well-defined parcel advection scheme (RK4) with appropriate boundary conditions, and visualization capabilities.</p>
             </section>
         </div>

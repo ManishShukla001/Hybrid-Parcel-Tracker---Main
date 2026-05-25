@@ -1,7 +1,13 @@
 """
 Handles downloading and processing of ERA5 data via CDS API.
 """
-import cdsapi
+try:
+    import cdsapi
+    CDSAPI_AVAILABLE = True
+except ImportError:
+    cdsapi = None
+    CDSAPI_AVAILABLE = False
+
 import xarray as xr
 import numpy as np
 from pathlib import Path
@@ -24,7 +30,9 @@ class APIDataHandler:
         init_lon_range = config.get('initialization_lon_range', (-180, 180))
         self.area = [init_lat_range[1], init_lon_range[0], init_lat_range[0], init_lon_range[1]]
 
-        self.client = cdsapi.Client(retry_max=5, sleep_max=120) # Add retry logic
+        self.area = [init_lat_range[1], init_lon_range[0], init_lat_range[0], init_lon_range[1]]
+
+        self.client = None # Lazy initialization to avoid connection in offline mode if files exist
 
     def _get_daily_filepath(self, date_obj: datetime.date) -> Path:
         """Generates the filepath for a daily NetCDF file."""
@@ -56,6 +64,8 @@ class APIDataHandler:
         }
 
         try:
+            if self.client is None:
+                 self.client = cdsapi.Client(retry_max=5, sleep_max=120)
             self.client.retrieve("reanalysis-era5-pressure-levels", request, str(filepath))
             print(f"Successfully downloaded {filepath}")
             return True
@@ -131,10 +141,38 @@ class APIDataHandler:
 
                 lats_np = data_for_hour['latitude'].values
                 lons_np = data_for_hour['longitude'].values
-                # Pressure levels from config, assuming they match the file's 'level' coordinate
-                pressures_np = self.config['pressure_levels'] 
+                # Ensure pressure levels from config are sorted ascending (required for interpolators)
+                self.pressure_levels = np.sort(self.config['pressure_levels'])
+                pressures_np = self.pressure_levels
 
-                # Ensure ascending order for coordinates as expected by interpolators
+                # Find the pressure coordinate name in the dataset
+                pressure_coord_name = None
+                possible_p_coords = ['pressure_level', 'level', 'isobaricInhPa']
+                for pc in possible_p_coords:
+                    if pc in data_for_hour.coords:
+                        pressure_coord_name = pc
+                        break
+                
+                if not pressure_coord_name:
+                    print(f"ERROR: Could not find pressure coordinate in {filepath}. Available: {list(data_for_hour.coords.keys())}")
+                    return None
+
+                # Reindex data to match the sorted pressure levels from config
+                # This handles cases where the file has descending pressure (1000->100) 
+                # but we need ascending (100->1000) or vice versa.
+                # 'method=None' means exact matches only (no interpolation).
+                try:
+                    data_for_hour = data_for_hour.reindex({pressure_coord_name: pressures_np})
+                except Exception as e_reindex:
+                     print(f"ERROR reindexing pressure levels: {e_reindex}")
+                     return None
+                
+                # Verify reindexing worked (no all-NaN slices introduced due to mismatch)
+                if data_for_hour['u'].isnull().all():
+                     print("ERROR: All data became NaN after pressure reindexing. Check if configured pressure levels match file levels.")
+                     return None
+
+                # Ensure ascending order for lat/lon coordinates
                 if not np.all(np.diff(lats_np) > 0): # ERA5 latitudes are usually descending
                     lats_np = np.sort(lats_np) # Sort ascending
                     data_for_hour = data_for_hour.reindex(latitude=lats_np)
@@ -147,37 +185,28 @@ class APIDataHandler:
                 # Extract, ensure (lat, lon, pressure) order, then flatten
                 # xarray usually returns (time, pressure_level, lat, lon). After .sel(time=...), it's (pressure_level, lat, lon)
                 # We need to transpose to (latitude, longitude, pressure_level) for consistency with CSV loader
-                u_values = data_for_hour['u'].transpose('latitude', 'longitude', 'pressure_level').values.flatten()
-                v_values = data_for_hour['v'].transpose('latitude', 'longitude', 'pressure_level').values.flatten()
-                w_values = data_for_hour['w'].transpose('latitude', 'longitude', 'pressure_level').values.flatten() # 'w' is vertical_velocity (Pa/s)
+                u_values = data_for_hour['u'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+                v_values = data_for_hour['v'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+                w_values = data_for_hour['w'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten() # 'w' is vertical_velocity (Pa/s)
 
                 u_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(u_values, nan=0.0))
                 v_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(v_values, nan=0.0))
                 w_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(w_values, nan=0.0))
 
-                q_tuple, t_tuple = None, None
-                if 'q' in data_for_hour:
-                    q_values = data_for_hour['q'].transpose('latitude', 'longitude', 'pressure_level').values.flatten()
-                    q_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(q_values, nan=0.0))
-                else:
-                    print(f"WARNING: Variable 'q' (specific_humidity) not found in {filepath} for hour {target_datetime_utc.hour} UTC. Skipping q calculation for this hour.")
-                    # Create a placeholder tuple with None for values if q is missing
-                    q_tuple = (lats_np, lons_np, pressures_np, None) 
+                target_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
+                scalars_data = {}
+                for scalar in target_scalars:
+                    if scalar in data_for_hour:
+                        s_values = data_for_hour[scalar].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+                        scalars_data[scalar] = (lats_np, lons_np, pressures_np, np.nan_to_num(s_values, nan=0.0))
+                    else:
+                        print(f"WARNING: Variable '{scalar}' not found in {filepath} for hour {target_datetime_utc.hour} UTC. Skipping calculation.")
 
-                if 't' in data_for_hour:
-                    t_values = data_for_hour['t'].transpose('latitude', 'longitude', 'pressure_level').values.flatten()
-                    t_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(t_values, nan=0.0))
-                else:
-                    print(f"WARNING: Variable 't' (temperature) not found in {filepath} for hour {target_datetime_utc.hour} UTC. Skipping t calculation for this hour.")
-                    # Create a placeholder tuple with None for values if t is missing
-                    t_tuple = (lats_np, lons_np, pressures_np, None)
-                # ... existing code ...
                 print(f"DEBUG APIDataHandler: u_tuple[3] is None? {u_tuple[3] is None}")
                 print(f"DEBUG APIDataHandler: v_tuple[3] is None? {v_tuple[3] is None}")
                 print(f"DEBUG APIDataHandler: w_tuple[3] is None? {w_tuple[3] is None}")
-                #return u_tuple, v_tuple, w_tuple, q_tuple, t_tuple
 
-                return u_tuple, v_tuple, w_tuple, q_tuple, t_tuple
+                return u_tuple, v_tuple, w_tuple, scalars_data
 
         except Exception as e:
             print(f"ERROR processing NetCDF file {filepath}: {e}")

@@ -1,86 +1,94 @@
-# Hybrid Parcel Tracker (HPT)
+# Hybrid Particle Tracker (HPT)
 
-A high-performance hybrid C++/Python parcel tracking system optimized for atmospheric Lagrangian transport simulations using ERA5 meteorological data.
+A high-performance, hybrid C++/Python particle tracking system optimized for atmospheric particle simulations using ERA5, HRRR, or custom NetCDF/CSV meteorological datasets.
 
 ## Overview
 
-This advanced parcel tracking system combines the computational power of C++ with the flexibility of Python to deliver production-ready performance for geoscientific applications. The hybrid architecture achieves exceptional speed while maintaining ease of use for researchers and developers. For comprehensive technical documentation see: **[System Documentation](https://manishshukla001.github.io/Hybrid-Parcel-Tracker---Main/info_page/system_documentation.html)**
+The Hybrid Particle Tracker (HPT) provides a significant performance improvement over pure Python lagrangian models by moving computationally intensive numerical integration and 3D interpolation routines to optimized C++ (utilizing OpenMP for multi-threaded parallel execution) while keeping data I/O, setup, API calls, and visualization in a flexible Python interface.
 
 ### Key Features
 
-- **🚀 High Performance**: Optimized C++ RK4 integration and 3D trilinear interpolation
-- **🔄 Hybrid Architecture**: Python front-end for configuration and visualization, C++ back-end for computation
-- **📊 Data Flexibility**: Supports both local CSV files and real-time ERA5 API downloads
-- **🌍 Scientific Accuracy**: Proper meteorological coordinate transformations and boundary conditions
-- **💾 Production Ready**: Checkpointing system for long-running simulations
-- **📈 Visualization**: Built-in Cartopy-based plotting with trajectory analysis
-- **🔧 Easy Integration**: Modern Python packaging with automatic compilation
+* **High Performance**: Particle updates run **10-50x faster** by executing Runge-Kutta 4th order (RK4) integration and 3D trilinear interpolation in C++.
+* **Parallel Execution**: Supports OpenMP multi-threading to parallelize integration steps over large particle populations.
+* **Flexible I/O (CSV, NetCDF, or API)**:
+  * **CSV**: Legacy grid-separated components.
+  * **NetCDF (NC)**: Load local `.nc` files (e.g. combined HRRR/ERA5 datasets).
+  * **API**: Download hourly data dynamically from the Copernicus Climate Data Store (CDS).
+* **Thermodynamic Analysis Tracking**:
+  * **Simple Subtraction**: Tracks raw changes in temperature ($\Delta T$).
+  * **Potential Temperature & Dry Static Energy**: Factors out adiabatic processes along the trajectory.
+  * **Full Anomaly Decomposition (Papritz & Röthlisberger)**: Decomposes temperature anomalies ($T'$) into integrated seasonality, advection, adiabatic, and diabatic drivers.
+* **Flexible Saving formats**: Save output states in standard CSV or as structured NetCDF files (using xarray and netcdf4 backend).
+* **Checkpointing**: Automatic resilience checkpointing to resume simulations from intermediate states.
 
-## Installation
+---
+
+## Installation & Setup
 
 ### Prerequisites
-
-- Python 3.8 or higher
-- C++ compiler (GCC, Clang, or MSVC)
-- CMake (optional, we use setuptools)
+* Python 3.8 or higher
+* A C++ compiler supporting C++17 (GCC, Clang, or MSVC)
+* OpenMP library installed (for parallel mode)
 
 ### Required Python Packages
-
+Dependencies are declared in `requirements.txt` and `pyproject.toml`. Install them together with the package using:
 ```bash
-pip install numpy pandas scipy matplotlib cartopy tqdm pybind11 xarray cdsapi
+pip install numpy pandas scipy matplotlib cartopy tqdm pybind11 xarray netcdf4 cdsapi seaborn
 ```
 
-### Build and Install
-
-1. Clone or download this repository
-2. Navigate to the project directory
-3. Install in development mode:
-
+### Build and Install (Unified Script)
+We provide a unified [build.py](file: build.py) script to clean previous build artifacts, install dependencies, build/compile the C++ bindings in editable mode, and run integration validation:
 ```bash
-pip install -e .
+python build.py
 ```
+This compiles the C++ codebase to produce the `particle_engine_cpp` module and links it to the local `hybrid_particle_tracker` Python package.
 
-This will compile the C++ extensions and install the Python package.
-
-### Verify Installation
-
-```python
-import particle_engine_cpp
-print("C++ engine available!")
-```
-
-If the C++ engine is not available, the system will automatically fall back to Python-only mode (slower but functional).
+---
 
 ## Usage
 
-### Basic Usage
+To run the tracking simulation, customize the configuration in your runner script (similar to [run_simulation.py](file: examples/run_simulation.py)):
 
 ```python
-from hybrid_particle_tracker.particle_tracker import HybridParticleTracker
 import numpy as np
 from pathlib import Path
+from hybrid_particle_tracker.particle_tracker import HybridParticleTracker
 
-# Configuration for CSV mode
+# Configuration Dictionary
 config = {
-    'data_source': "CSV",  # Data source: "CSV" or "API"
-    'csv_base_dir': Path("/path/to/your/era5_csv_output"),
-    'output_dir': Path("/path/to/output"),
-    'checkpoint_dir': Path("/path/to/output/checkpoints"),
-    'output_format': "CSV",  # "CSV" or "NETCDF"
-    'pressure_levels': np.array([200, 250, 300, 350, 400, 450, 500,
-                                550, 600, 650, 700, 750, 775, 800, 825,
-                                850, 875, 900, 925, 950, 975, 1000]),
-    # Parcel initialization
-    'initialization_lat_range': (-15, 30),
-    'initialization_lon_range': (30, 120),
-    'initialization_pressure_levels': [1000, 925, 850, 700, 500, 300],
-    'initialization_spacing_km': 10,
-    # Simulation parameters
-    'total_simulation_hours': 479,
+    # Data source can be "CSV", "NC" / "NETCDF", or "API"
+    'data_source': "NC",
+    'nc_data_dir': Path("./examples/nc_files"),
+    'nc_file_pattern': None, # Auto-detects combined_YYYYMMDD_HH.nc
+    
+    # Execution mode: "serial" or "parallel" (enables OpenMP)
+    'execution_mode': "parallel",
+    
+    # Storage details
+    'output_dir': Path("./examples/hybrid_particle_output"),
+    'output_format': "NETCDF", # Save outputs as "NETCDF" or "CSV"
+    'checkpoint_dir': Path("./examples/hybrid_particle_output/checkpoints"),
+    
+    # Particle Initialization Grid
+    'initialization_lat_range': (-15, 65),
+    'initialization_lon_range': (-135, -45),
+    'initialization_pressure_levels': [1000, 950, 850, 700, 500, 300],
+    'initialization_spacing_km': 30,
+    
+    # Simulation Timing 
+    'simulation_start_datetime': "2025-03-21 00:00:00",
+    'simulation_end_datetime': "2025-03-21 10:00:00",
+    'simulation_start_hour': 0,
+    'total_simulation_hours': 10,
     'data_interval_hours': 1,
-    'simulation_step_hours': 0.5,
+    'simulation_step_hours': 0.25,
     'output_interval_hours': 1,
-    'checkpoint_interval_hours': 6,
+    'checkpoint_interval_hours': 3,
+    
+    # Thermodynamic Tracking Mode
+    # Options: 'NONE', 'SIMPLE_SUBTRACTION', 'POTENTIAL_TEMPERATURE', 'FULL_DECOMPOSITION'
+    'thermo_mode': 'POTENTIAL_TEMPERATURE',
+    'thermo_bg_file': Path("./climatology_background.nc"), # Required for FULL_DECOMPOSITION
 }
 
 # Initialize and run
@@ -88,239 +96,156 @@ tracker = HybridParticleTracker(config)
 tracker.run_simulation(resume=True)
 ```
 
-### API Data Source Mode
-
-```python
-from hybrid_particle_tracker.particle_tracker import HybridParticleTracker
-import numpy as np
-from pathlib import Path
-from datetime import datetime
-
-# Configuration for API mode (downloads ERA5 data from Copernicus Climate Data Store)
-config = {
-    'data_source': "API",  # Use CDS API to download data
-    'api_data_dir': Path("./api_files"),  # Directory for downloaded NetCDF files
-    'output_dir': Path("./hybrid_particle_output"),
-    'checkpoint_dir': Path("./hybrid_particle_output/checkpoints"),
-    'output_format': "CSV",  # Output format: "CSV" or "NETCDF"
-    'pressure_levels': np.array([200, 250, 300, 350, 400, 450, 500,
-                                550, 600, 650, 700, 750, 775, 800, 825,
-                                850, 875, 900, 925, 950, 975, 1000]),
-    # Time configuration for API downloads
-    'simulation_start_datetime': "2023-01-01 00:00:00",  # YYYY-MM-DD HH:MM:SS UTC
-    'simulation_start_hour': 0,  # Optional: Offset from start_datetime
-    'simulation_end_datetime': "2023-01-03 00:00:00",  # Optional: End datetime
-    'total_simulation_hours': 48,  # Total simulation duration
-    'data_interval_hours': 1,
-    'simulation_step_hours': 0.5,
-    'output_interval_hours': 1,
-    'checkpoint_interval_hours': 6,
-    # Parcel initialization
-    'initialization_lat_range': (-15, 30),
-    'initialization_lon_range': (30, 120),
-    'initialization_pressure_levels': [1000, 925, 850, 700, 500, 300],
-    'initialization_spacing_km': 10,
-    # Visualization extent (optional)
-    'plot_lat_range': (-20, 40),
-    'plot_lon_range': (20, 130),
-}
-
-# Initialize and run
-tracker = HybridParticleTracker(config)
-tracker.run_simulation(resume=True)
-```
-
-### Running the Example
-
+Running the examples:
 ```bash
 cd examples
 python run_simulation.py
 ```
 
-Make sure to adjust the paths in the example script to match your data location.
+---
 
-## Architecture
+## Running on HPC Clusters (PBS / Conda)
 
-### File Structure
+HPT is designed to run efficiently on High-Performance Computing (HPC) clusters using scheduler engines like PBS. Computing nodes on typical HPC clusters do not have internet access, so HPT uses an **offline build workflow** that compiles the C++ library in-place.
 
-```
-Hybrid-Parcel-Tracker/
-├── src/                       # Source code directory
-│   ├── cpp/                   # C++ implementation (< 1KB total)
-│   │   ├── particle_engine.cpp    # Main C++ engine with Python bindings
-│   │   ├── particle_engine.h      # Engine header
-│   │   ├── interpolator.cpp       # Fast 3D trilinear interpolation
-│   │   ├── interpolator.h         # Interpolation header
-│   │   ├── rk4_integrator.cpp     # RK4 numerical integration
-│   │   └── rk4_integrator.h       # RK4 header
-│   └── python/                # Python interface (~5KB total)
-│       ├── __init__.py            # Package initialization
-│       ├── particle_tracker.py    # Main simulation orchestrator
-│       ├── data_loader.py         # CSV/ERA5 data loading utilities
-│       ├── api_data_handler.py    # Copernicus ERA5 API client
-│       └── visualization.py       # Cartopy plotting and analysis
-├── examples/                  # User examples and tools
-│   ├── run_simulation.py       # Main configuration example
-│   └── api_request.py          # ERA5 data download utility
-├── Info_page/                 # Technical documentation
-│   └── system_documentation.html
-├── .gitignore                 # Git exclusion rules
-├── pyproject.toml             # Modern Python packaging (PEP 621)
-├── setup.py                   # Legacy build configuration
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+### PBS Job Submission Script
+
+An example job script [run_job.pbs](file: run_job.pbs) is provided in the repository root. You can submit it to the cluster scheduler using `qsub`:
+
+```bash
+qsub run_job.pbs
 ```
 
-### Component Responsibilities
+Here is a template of the PBS job configuration:
 
-#### C++ Components
-- **RegularGrid3DInterpolator**: Fast trilinear interpolation for 3D velocity fields
-- **RK4Integrator**: Optimized Runge-Kutta 4th order integration
-- **ParticleEngine**: Main interface coordinating interpolation and integration
+```bash
+#!/bin/bash
+#PBS -N HPT_Simulation
+#PBS -l select=1:ncpus=90
+#PBS -l walltime=240:00:00
+#PBS -q your_queue_name
+#PBS -j oe
+#PBS -o HPT_Simulation.log
+#PBS -e HPT_error.log
 
-#### Python Components
-- **VelocityDataLoader**: Handles CSV file loading and preprocessing
-- **APIDataHandler**: Downloads and processes ERA5 data from CDS API (NetCDF)
-- **ParticleVisualizer**: Creates plots and visualizations with Cartopy
-- **HybridParticleTracker**: Main simulation orchestrator coordinating all components
+# --- 1. Environment & Compiler Setup ---
+# Load GCC and CMake to compile the C++ extension on the cluster node
+module load gcc
+module load cmake
 
-## Configuration
+# Activate your pre-configured Conda/Miniforge environment containing dependencies
+# (e.g., numpy, pandas, scipy, xarray, netcdf4, etc.)
+source $HOME/miniforge3/bin/activate env_name
 
-### Required Configuration Parameters
+# Navigate to the workspace directory
+cd "$PBS_O_WORKDIR"
 
-#### General Parameters
-- `data_source`: "CSV" or "API" - Data input method
-- `output_dir`: Directory for simulation outputs
-- `checkpoint_dir`: Directory for checkpoint files
-- `output_format`: "CSV" or "NETCDF" - Output file format
-- `pressure_levels`: Array of pressure levels matching your data
+# --- 2. Offline Build (In-Place) ---
+# Compiles the C++ .so file directly in the folder without checking remote packages
+python setup.py build_ext --inplace
 
-#### CSV Mode Parameters (when data_source is "CSV")
-- `csv_base_dir`: Path to directory containing u, v, w velocity CSV files
+# --- 3. Runtime Configuration ---
+# Add working directory to PYTHONPATH to locate the built binaries and src python packages
+export PYTHONPATH="$PBS_O_WORKDIR:$PYTHONPATH"
 
-#### API Mode Parameters (when data_source is "API")
-- `api_data_dir`: Directory to store downloaded NetCDF files
-- `simulation_start_datetime`: Start time in "YYYY-MM-DD HH:MM:SS" UTC format
-- `simulation_start_hour`: Optional offset from start_datetime for CSV-relative timing
-- `simulation_end_datetime`: Optional end time in "YYYY-MM-DD HH:MM:SS" UTC format
-- `total_simulation_hours`: Total simulation duration (fallback if simulation_end_datetime not provided)
+# Map the OpenMP thread count to the requested number of CPUs
+if [ -n "$PBS_NP" ]; then
+    export OMP_NUM_THREADS=$PBS_NP
+else
+    export OMP_NUM_THREADS=90
+fi
 
-#### Parcel Initialization Parameters
-- `initialization_lat_range`: (min_lat, max_lat) for parcel distribution
-- `initialization_lon_range`: (min_lon, max_lon) for parcel distribution
-- `initialization_pressure_levels`: List of pressure levels for initialization [1000, 925, 850, etc.]
-- `initialization_spacing_km`: Grid spacing in kilometers
-
-#### Simulation Timing Parameters
-- `data_interval_hours`: Time interval between velocity data files
-- `simulation_step_hours`: Parcel position update time step
-- `output_interval_hours`: How often to save parcel positions
-- `checkpoint_interval_hours`: How often to save checkpoints
-
-#### Optional Visualization Parameters
-- `plot_lat_range`: (min_lat, max_lat) for plot extent
-- `plot_lon_range`: (min_lon, max_lon) for plot extent
-
-### Data Input Formats
-
-#### CSV Mode (Local File Processing)
-The system expects CSV files organized as:
-```
-csv_base_dir/
-├── u/
-│   ├── u_200_1.csv
-│   ├── u_200_2.csv
-│   └── ...
-├── v/
-│   ├── v_200_1.csv
-│   └── ...
-└── w/
-    ├── w_200_1.csv
-    └── ...
+# --- 4. Run Simulation ---
+python examples/run_simulation.py
 ```
 
-Each CSV file should contain columns: `Latitude`, `Longitude`, and the velocity component (`u`, `v`, or `w`).
+### Key Considerations for HPC Runs:
+1. **Offline In-Place Compilation**: Computing nodes are usually offline. Instead of running `pip install -e .` (which attempts to query external PyPI servers), run `python setup.py build_ext --inplace` to build the compiled `.so` library locally.
+2. **Environment Variable Configuration**: Running `export PYTHONPATH="$PBS_O_WORKDIR:$PYTHONPATH"` ensures the in-place compiled `particle_engine_cpp` module is discoverable by the Python interpreter without requiring system-wide permissions.
+3. **OMP Thread Allocation**: Mapping `OMP_NUM_THREADS` dynamically to `$PBS_NP` allows the C++ engine to scale parallel operations to exactly the number of CPU cores allocated by the PBS scheduler.
 
-#### API Mode (Copernicus Climate Data Store)
-ERA5 data is automatically downloaded when using API mode. Files are saved as NetCDF in the `api_data_dir`:
+---
+
+## File Architecture
+
 ```
-api_data_dir/
-├── api_daily_20230101.nc
-├── api_daily_20230102.nc
-└── ...
+HPT_Texas/
+├── src/
+│   ├── cpp/                                # C++ core implementation
+│   │   ├── particle_engine.cpp             # Main C++ engine & pybind11 bindings
+│   │   ├── particle_engine.h               # Main header
+│   │   ├── interpolator.cpp                # 3D trilinear interpolation
+│   │   ├── interpolator.h                  # Interpolator header
+│   │   ├── rk4_integrator.cpp              # Serial Runge-Kutta 4 integration
+│   │   ├── rk4_integrator.h                # Serial integrator header
+│   │   ├── rk4_integrator_parallel.cpp     # Parallel RK4 using OpenMP
+│   │   ├── rk4_integrator_parallel.h       # Parallel integrator header
+│   │   └── thermo_state.h                  # Thermodynamic calculation module
+│   └── python/                             # Python orchestrator package
+│       ├── __init__.py                     # Package imports & namespaces
+│       ├── particle_tracker.py             # Main orchestrator & controller class
+│       ├── data_loader.py                  # CSV data loader
+│       ├── nc_data_loader.py               # NetCDF data loader (HRRR/ERA5)
+│       ├── api_data_handler.py             # CDS API loader
+│       ├── data_downloader_method2.py      # ERA5 Method 2 Climatology downloader
+│       └── visualization.py                # Trajectory plotting utilities
+├── examples/
+│   ├── run_simulation.py                   # Example execution script
+│   └── api_request.py                      # Raw client API download script
+|
+├── additional_files/
+│   ├── debug_cpp_interpolater              # Scripts to convert/combine HRRR and ERA5 datasets
+│   ├── Input_Data_Preparation/             # Scripts to convert/combine HRRR and ERA5 datasets
+│   ├── compare_thermo_results.py           # Comparison script for thermo mode validations
+│   ├── verify_performance.py               # Speed benchmarker script
+│   ├── Imdaa_Extract*.py                   # Scripts to extract data from Imdaa files
+│   └── README_Details_of_additional_files  # More details about the additional files
+│  
+├── setup.py                                # C++ Compilation config
+├── pyproject.toml                          # Modern PEP 518 packaging configuration
+├── requirements.txt                        # Python dependencies
+└── build.py                                # Unified build, install, and validation script
 ```
 
-Downloaded data includes: u/v/w components, specific humidity (q), and temperature (t).
+---
 
-### Output Formats
+## Component Details
 
-#### CSV Output
-Parcels are saved as CSV files with columns: `id`, `latitude`, `longitude`, `pressure`, and optionally `specific_humidity`, `temperature`.
+### Thermodynamic Tracking Modes
+1. **`SIMPLE_SUBTRACTION`**: Tracks temperature changes purely via basic subtraction:
+   $$\Delta T = T_t - T_0$$
+2. **`POTENTIAL_TEMPERATURE` / `DRY_STATIC_ENERGY`**:
+   Factors out expansion/compression by tracking:
+   * Potential Temperature ($\theta$):
+     $$\theta = T \left(\frac{P_0}{P}\right)^\kappa$$
+     where $P_0 = 1000$ hPa and $\kappa \approx 0.286$.
+   * Dry Static Energy (DSE):
+     $$DSE = C_p T + g z$$
+     where $C_p = 1004 \text{ J kg}^{-1}\text{K}^{-1}$ and $g = 9.81 \text{ m s}^{-2}$.
+3. **`FULL_DECOMPOSITION` (Papritz & Röthlisberger)**:
+   Decomposes anomaly changes ($T'$) into four integrated physical drivers along the trajectory:
+   * **Seasonality**: $-\int \frac{\partial \overline{T}}{\partial t} d\tau$
+   * **Advection**: $-\int \mathbf{v} \cdot \nabla_h \overline{T} d\tau$
+   * **Adiabatic**: $\int \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau$
+   * **Diabatic**: $\int \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau$
 
-#### NetCDF Output
-Parcels are saved in NetCDF format with proper metadata and coordinate systems for scientific analysis.
+### Background Climatology Data Preparation
+`FULL_DECOMPOSITION` requires a climatological background mean temperature field ($\overline{T}$) and its gradients. Use the background downloader utility to fetch and prepare this from the CDS API:
+```bash
+python src/python/data_downloader_method2.py --year 2025 --month 3 --days 21 22 --out_file climatology_background.nc
+```
+This utility fetches the raw ERA5 background fields over a 21-day centered window across historical baselines and computes horizontal ($\nabla_h \overline{T}$), vertical ($\frac{\partial \overline{T}}{\partial p}$), and temporal ($\frac{\partial \overline{T}}{\partial t}$) derivatives.
 
-## Performance Tips
-
-1. **Use C++ Engine**: Ensure the C++ extension compiles successfully for maximum performance
-2. **Optimize Batch Size**: The system automatically determines optimal batch sizes
-3. **Memory Management**: Large simulations benefit from frequent garbage collection
-4. **Checkpointing**: Use regular checkpoints to avoid losing progress
-5. **Data Preprocessing**: Ensure CSV files are clean and properly formatted
+---
 
 ## Troubleshooting
 
-### C++ Compilation Issues
+### Console Encoding Errors
+On Windows environments, stdout redirections might trigger `UnicodeEncodeError` due to local codepage conflicts. Ensure you use the ASCII-safe [build.py](file: build.py) utility which prints ASCII status messages.
 
-If the C++ extension fails to compile:
-1. Check that you have a compatible C++ compiler
-2. Ensure pybind11 is installed: `pip install pybind11`
-3. Try installing with verbose output: `pip install -e . -v`
-
-### Memory Issues
-
-For large simulations:
-1. Reduce the number of particles by increasing `spacing_km`
-2. Increase `checkpoint_interval_hours` to save memory
-3. Monitor system memory usage during simulation
-
-### Data Loading Errors
-
-If CSV files fail to load:
-1. Check file paths and permissions
-2. Verify CSV format matches expected structure
-3. Ensure all required pressure levels have corresponding files
-
-## Additional Resources
-
-### Detailed Technical Documentation
-
-For comprehensive technical documentation including mathematical formulations, algorithm details, and system architecture diagrams, see:
-**[System Documentation](Info_page/system_documentation.html)**
-
-This includes:
-- Detailed RK4 integration equations
-- Trilinear interpolation mathematics
-- Complete system flowcharts and diagrams
-- API/Scalar transport implementation
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Authors
-
-- **Manish Shukla** - Postdoctoral student, Indian Institute of Technology Hyderabad (manishshukla01@live.com)
-- **R. Maheshwaran** - Assistant Professor, Indian Institute of Technology, Hyderabad
-
-## Acknowledgments
-
-This research software was developed at the Indian Institute of Technology Hyderabad for advanced atmospheric modeling and climate research applications. Special thanks to the Copernicus Climate Change Service (C3S) for providing the ERA5 reanalysis dataset and National Centre for Medium Range Weather Forecasting (NCMWRF) for IMDAA reanalysis dataset.
+### C++ Compiler Errors
+* If compilation fails due to missing OpenMP, make sure OpenMP is installed on your system:
+  * **Windows**: OpenMP is built into MSVC compilers.
+  * **Linux**: Install `libomp-dev` or `libgomp`.
+  * **Mac**: Install `libomp` via Homebrew (`brew install libomp`).
+* Try executing `python build.py` to get full traceback error output.

@@ -119,6 +119,10 @@ class VelocityDataLoader:
         
         # Flatten the grid for C++ (C++ expects 1D array in row-major order)
         values_flat = velocity_grid.flatten()
+        print(f"DEBUG VelocityDataLoader: values_flat for {variable} is None? {values_flat is None}")
+        if values_flat is not None:
+            print(f"DEBUG VelocityDataLoader: values_flat for {variable} shape: {values_flat.shape}")
+        
 
         return unique_lats, unique_lons, self.pressure_levels, values_flat
     
