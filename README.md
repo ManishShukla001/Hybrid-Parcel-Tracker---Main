@@ -1,53 +1,72 @@
 # Hybrid Particle Tracker (HPT)
 
-A high-performance, hybrid C++/Python particle tracking system optimized for atmospheric particle simulations using ERA5, HRRR, or custom NetCDF/CSV meteorological datasets.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
+[![C++ Bindings](https://img.shields.io/badge/C%2B%2B-pybind11-blue)](https://github.com/pybind/pybind11)
+[![OpenMP Acceleration](https://img.shields.io/badge/OpenMP-accelerated-orange)](https://www.openmp.org/)
+[![System Documentation](https://img.shields.io/badge/docs-system%20documentation-brightgreen)](https://manishshukla001.github.io/Hybrid-Parcel-Tracker---Main/)
 
-## Overview
-
-The Hybrid Particle Tracker (HPT) provides a significant performance improvement over pure Python lagrangian models by moving computationally intensive numerical integration and 3D interpolation routines to optimized C++ (utilizing OpenMP for multi-threaded parallel execution) while keeping data I/O, setup, API calls, and visualization in a flexible Python interface.
-
-### Key Features
-
-* **High Performance**: Particle updates run **10-50x faster** by executing Runge-Kutta 4th order (RK4) integration and 3D trilinear interpolation in C++.
-* **Parallel Execution**: Supports OpenMP multi-threading to parallelize integration steps over large particle populations.
-* **Flexible I/O (CSV, NetCDF, or API)**:
-  * **CSV**: Legacy grid-separated components.
-  * **NetCDF (NC)**: Load local `.nc` files (e.g. combined HRRR/ERA5 datasets).
-  * **API**: Download hourly data dynamically from the Copernicus Climate Data Store (CDS).
-* **Thermodynamic Analysis Tracking**:
-  * **Simple Subtraction**: Tracks raw changes in temperature ($\Delta T$).
-  * **Potential Temperature & Dry Static Energy**: Factors out adiabatic processes along the trajectory.
-  * **Full Anomaly Decomposition (Papritz & Röthlisberger)**: Decomposes temperature anomalies ($T'$) into integrated seasonality, advection, adiabatic, and diabatic drivers.
-* **Flexible Saving formats**: Save output states in standard CSV or as structured NetCDF files (using xarray and netcdf4 backend).
-* **Checkpointing**: Automatic resilience checkpointing to resume simulations from intermediate states.
+HPT is a high-performance, hybrid C++/Python Lagrangian particle tracking system optimized for simulating air parcel trajectories using ERA5, HRRR, or custom NetCDF/CSV meteorological datasets.
 
 ---
 
-## Installation & Setup
+## 📖 System Documentation
+
+We have prepared a comprehensive, interactive HTML system documentation illustrating coordinates, algorithms, flows, and interpolation details:
+* **Live Webpage (Recommended)**: [https://manishshukla001.github.io/Hybrid-Parcel-Tracker---Main/](https://manishshukla001.github.io/Hybrid-Parcel-Tracker---Main/)
+* **Local Workspace**: Open [index.html](file: index.html) or [system_documentation.html](file: info_page/system_documentation.html) in your browser.
+
+---
+
+## 👥 Authors & Academic Context
+
+* **Manish Shukla** (Postdoctoral Fellow) — [manishshukla01@live.com](mailto:manishshukla01@live.com)
+* **R. Maheshwaran** (Assistant Professor)
+* **Institution**: Indian Institute of Technology Hyderabad (IIT Hyderabad), India
+* **License**: Licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
+---
+
+## 🚀 Key Features
+
+* **High Performance Core**: Integration and interpolation routines run in C++, offering **10-50x speedups** over pure Python advection models.
+* **Parallel Execution**: Multi-threaded parallel processing of particle populations using OpenMP.
+* **Flexible I/O Formats**:
+  * **CSV**: Individual, grid-separated velocity files.
+  * **NetCDF (NC)**: Integrated multi-variable datasets (e.g. combined HRRR/ERA5 files).
+  * **Copernicus API**: On-the-fly downloads from the Copernicus Climate Data Store (CDS).
+* **Advanced Thermodynamic Tracking**:
+  * *Simple Subtraction*: Tracks basic temperature changes ($\Delta T$).
+  * *Potential Temperature & Dry Static Energy*: Filters out adiabatic expansion/compression along trajectories.
+  * *Full Decomposition (Papritz & Röthlisberger)*: Computes integrated seasonality, advection, adiabatic, and diabatic temperature anomaly drivers.
+* **Resilient Checkpointing**: Automatic state serialization to pause and resume runs without loss.
+
+---
+
+## 🛠️ Installation & Build
 
 ### Prerequisites
-* Python 3.8 or higher
-* A C++ compiler supporting C++17 (GCC, Clang, or MSVC)
-* OpenMP library installed (for parallel mode)
+1. Python 3.8 or higher
+2. C++ Compiler supporting C++17 (`gcc`, `clang`, or `MSVC`)
+3. OpenMP libraries installed (built into MSVC; for Linux install `libomp-dev`)
 
-### Required Python Packages
-Dependencies are declared in `requirements.txt` and `pyproject.toml`. Install them together with the package using:
+### Python Dependencies
+Install all package requirements:
 ```bash
 pip install numpy pandas scipy matplotlib cartopy tqdm pybind11 xarray netcdf4 cdsapi seaborn
 ```
 
-### Build and Install (Unified Script)
-We provide a unified [build.py](file: build.py) script to clean previous build artifacts, install dependencies, build/compile the C++ bindings in editable mode, and run integration validation:
+### Build & Verify (Unified Script)
+We provide a unified [build.py](file: build.py) script to clean previous build artifacts, install dependencies, compile C++ bindings, install the package locally, and run core module validation:
 ```bash
 python build.py
 ```
-This compiles the C++ codebase to produce the `particle_engine_cpp` module and links it to the local `hybrid_particle_tracker` Python package.
 
 ---
 
-## Usage
+## 💻 Usage
 
-To run the tracking simulation, customize the configuration in your runner script (similar to [run_simulation.py](file: examples/run_simulation.py)):
+To run the tracking simulation, configure the simulation parameters in your runner script (see [run_simulation.py](file: examples/run_simulation.py)):
 
 ```python
 import numpy as np
@@ -104,20 +123,16 @@ python run_simulation.py
 
 ---
 
-## Running on HPC Clusters (PBS / Conda)
+## 🌐 Running on HPC Clusters (PBS)
 
-HPT is designed to run efficiently on High-Performance Computing (HPC) clusters using scheduler engines like PBS. Computing nodes on typical HPC clusters do not have internet access, so HPT uses an **offline build workflow** that compiles the C++ library in-place.
+HPT supports execution on High-Performance Computing (HPC) clusters using schedulers like PBS. Because compute nodes usually run offline, HPT compiles the library in-place.
 
-### PBS Job Submission Script
-
-An example job script [run_job.pbs](file: run_job.pbs) is provided in the repository root. You can submit it to the cluster scheduler using `qsub`:
-
+You can submit jobs via the scheduler using `qsub`:
 ```bash
 qsub run_job.pbs
 ```
 
-Here is a template of the PBS job configuration:
-
+An example template for [run_job.pbs](file: run_job.pbs) is provided below:
 ```bash
 #!/bin/bash
 #PBS -N HPT_Simulation
@@ -128,45 +143,36 @@ Here is a template of the PBS job configuration:
 #PBS -o HPT_Simulation.log
 #PBS -e HPT_error.log
 
-# --- 1. Environment & Compiler Setup ---
-# Load GCC and CMake to compile the C++ extension on the cluster node
+# Load compiler and tools
 module load gcc
 module load cmake
 
-# Activate your pre-configured Conda/Miniforge environment containing dependencies
-# (e.g., numpy, pandas, scipy, xarray, netcdf4, etc.)
+# Activate Conda environment
 source $HOME/miniforge3/bin/activate env_name
 
-# Navigate to the workspace directory
+# Navigate to working directory
 cd "$PBS_O_WORKDIR"
 
-# --- 2. Offline Build (In-Place) ---
-# Compiles the C++ .so file directly in the folder without checking remote packages
+# Compile C++ extensions in-place (offline friendly)
 python setup.py build_ext --inplace
 
-# --- 3. Runtime Configuration ---
-# Add working directory to PYTHONPATH to locate the built binaries and src python packages
+# Add folder to Python Path
 export PYTHONPATH="$PBS_O_WORKDIR:$PYTHONPATH"
 
-# Map the OpenMP thread count to the requested number of CPUs
+# Map requested CPUs to OpenMP Thread Count
 if [ -n "$PBS_NP" ]; then
     export OMP_NUM_THREADS=$PBS_NP
 else
     export OMP_NUM_THREADS=90
 fi
 
-# --- 4. Run Simulation ---
+# Run simulation
 python examples/run_simulation.py
 ```
 
-### Key Considerations for HPC Runs:
-1. **Offline In-Place Compilation**: Computing nodes are usually offline. Instead of running `pip install -e .` (which attempts to query external PyPI servers), run `python setup.py build_ext --inplace` to build the compiled `.so` library locally.
-2. **Environment Variable Configuration**: Running `export PYTHONPATH="$PBS_O_WORKDIR:$PYTHONPATH"` ensures the in-place compiled `particle_engine_cpp` module is discoverable by the Python interpreter without requiring system-wide permissions.
-3. **OMP Thread Allocation**: Mapping `OMP_NUM_THREADS` dynamically to `$PBS_NP` allows the C++ engine to scale parallel operations to exactly the number of CPU cores allocated by the PBS scheduler.
-
 ---
 
-## File Architecture
+## 📂 Repository File Structure
 
 ```
 HPT_Texas/
@@ -192,9 +198,9 @@ HPT_Texas/
 ├── examples/
 │   ├── run_simulation.py                   # Example execution script
 │   └── api_request.py                      # Raw client API download script
-|
+│
 ├── additional_files/
-│   ├── debug_cpp_interpolater              # Scripts to convert/combine HRRR and ERA5 datasets
+│   ├── debug_cpp_interpolater              # Interpolator debugger utility
 │   ├── Input_Data_Preparation/             # Scripts to convert/combine HRRR and ERA5 datasets
 │   ├── compare_thermo_results.py           # Comparison script for thermo mode validations
 │   ├── verify_performance.py               # Speed benchmarker script
@@ -204,48 +210,45 @@ HPT_Texas/
 ├── setup.py                                # C++ Compilation config
 ├── pyproject.toml                          # Modern PEP 518 packaging configuration
 ├── requirements.txt                        # Python dependencies
+├── index.html                              # Redirect landing page for GitHub Pages documentation
 └── build.py                                # Unified build, install, and validation script
 ```
 
 ---
 
-## Component Details
+## 🌡️ Thermodynamic Tracking Modes
 
-### Thermodynamic Tracking Modes
-1. **`SIMPLE_SUBTRACTION`**: Tracks temperature changes purely via basic subtraction:
-   $$\Delta T = T_t - T_0$$
-2. **`POTENTIAL_TEMPERATURE` / `DRY_STATIC_ENERGY`**:
-   Factors out expansion/compression by tracking:
-   * Potential Temperature ($\theta$):
-     $$\theta = T \left(\frac{P_0}{P}\right)^\kappa$$
-     where $P_0 = 1000$ hPa and $\kappa \approx 0.286$.
-   * Dry Static Energy (DSE):
-     $$DSE = C_p T + g z$$
-     where $C_p = 1004 \text{ J kg}^{-1}\text{K}^{-1}$ and $g = 9.81 \text{ m s}^{-2}$.
-3. **`FULL_DECOMPOSITION` (Papritz & Röthlisberger)**:
-   Decomposes anomaly changes ($T'$) into four integrated physical drivers along the trajectory:
-   * **Seasonality**: $-\int \frac{\partial \overline{T}}{\partial t} d\tau$
-   * **Advection**: $-\int \mathbf{v} \cdot \nabla_h \overline{T} d\tau$
-   * **Adiabatic**: $\int \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau$
-   * **Diabatic**: $\int \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau$
+### 1. Simple Subtraction (`SIMPLE_SUBTRACTION`)
+Calculates the basic temperature difference along the parcel's trajectory:
+$$\Delta T = T_t - T_{t_0}$$
 
-### Background Climatology Data Preparation
-`FULL_DECOMPOSITION` requires a climatological background mean temperature field ($\overline{T}$) and its gradients. Use the background downloader utility to fetch and prepare this from the CDS API:
+### 2. Potential Temperature & Dry Static Energy (`POTENTIAL_TEMPERATURE`)
+Factors out expansion and compression along vertical movements:
+* **Potential Temperature** ($\theta$):
+  $$\theta = T \left(\frac{P_0}{P}\right)^\kappa$$
+  where $P_0 = 1000 \text{ hPa}$ and $\kappa \approx 0.286$ (specific dry air gas constant ratio $R/C_p$).
+* **Dry Static Energy** ($DSE$):
+  $$DSE = C_p T + g z$$
+  where $C_p = 1004 \text{ J kg}^{-1}\text{K}^{-1}$, $g \approx 9.81 \text{ m s}^{-2}$, and $z$ is geopotential height.
+
+### 3. Full Anomaly Decomposition (`FULL_DECOMPOSITION`)
+Decomposes temperature anomaly variations ($T'$) into four integrated physical drivers along paths:
+$$T'(x,t) - T'(x_0,t_0) = \underbrace{-\int_{t_0}^{t} \frac{\partial \overline{T}}{\partial t} d\tau}_{\text{Seasonality}} \underbrace{-\int_{t_0}^{t} \mathbf{v} \cdot \nabla_h \overline{T} d\tau}_{\text{Advective}} + \underbrace{\int_{t_0}^{t} \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau}_{\text{Adiabatic}} + \underbrace{\int_{t_0}^{t} \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau}_{\text{Diabatic}}$$
+
+To prepare the background climatology temperature field ($\overline{T}$ and derivatives), run the background download script prior to the simulation:
 ```bash
 python src/python/data_downloader_method2.py --year 2025 --month 3 --days 21 22 --out_file climatology_background.nc
 ```
-This utility fetches the raw ERA5 background fields over a 21-day centered window across historical baselines and computes horizontal ($\nabla_h \overline{T}$), vertical ($\frac{\partial \overline{T}}{\partial p}$), and temporal ($\frac{\partial \overline{T}}{\partial t}$) derivatives.
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### Console Encoding Errors
 On Windows environments, stdout redirections might trigger `UnicodeEncodeError` due to local codepage conflicts. Ensure you use the ASCII-safe [build.py](file: build.py) utility which prints ASCII status messages.
 
-### C++ Compiler Errors
-* If compilation fails due to missing OpenMP, make sure OpenMP is installed on your system:
-  * **Windows**: OpenMP is built into MSVC compilers.
-  * **Linux**: Install `libomp-dev` or `libgomp`.
-  * **Mac**: Install `libomp` via Homebrew (`brew install libomp`).
-* Try executing `python build.py` to get full traceback error output.
+### OpenMP Compilation Errors
+If the C++ build fails due to a missing compiler or OpenMP library:
+* **macOS**: Install LLVM/Clang and OpenMP via homebrew: `brew install libomp`.
+* **Linux**: Ensure `libomp-dev` is installed.
+* **Windows**: OpenMP is built directly into MSVC. If using MinGW, install `pthreads` and `gomp` extensions.
