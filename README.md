@@ -252,3 +252,9 @@ If the C++ build fails due to a missing compiler or OpenMP library:
 * **macOS**: Install LLVM/Clang and OpenMP via homebrew: `brew install libomp`.
 * **Linux**: Ensure `libomp-dev` is installed.
 * **Windows**: OpenMP is built directly into MSVC. If using MinGW, install `pthreads` and `gomp` extensions.
+
+---
+
+## 📚 References
+
+* *Coming soon - paper under review*
