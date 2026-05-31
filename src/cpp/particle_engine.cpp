@@ -204,7 +204,26 @@ PYBIND11_MODULE(particle_engine_cpp, m) {
              py::arg("lat_coords"), py::arg("lon_coords"), py::arg("pressure_coords"),
              py::arg("values"), py::arg("fill_value") = 0.0)
         .def("interpolate", &RegularGrid3DInterpolator::interpolate)
-        .def("interpolate_batch", &RegularGrid3DInterpolator::interpolate_batch)
+        .def("interpolate_batch", [](const RegularGrid3DInterpolator& self,
+                                     py::array_t<double> lats,
+                                     py::array_t<double> lons,
+                                     py::array_t<double> pressures) {
+            auto r_lats = lats.unchecked<1>();
+            auto r_lons = lons.unchecked<1>();
+            auto r_pressures = pressures.unchecked<1>();
+            size_t n = r_lats.shape(0);
+            if (r_lons.shape(0) != n || r_pressures.shape(0) != n) {
+                throw std::invalid_argument("Input arrays must have the same size");
+            }
+            py::array_t<double> result(n);
+            auto r_res = result.mutable_unchecked<1>();
+            
+            #pragma omp parallel for
+            for (ptrdiff_t i = 0; i < static_cast<ptrdiff_t>(n); ++i) {
+                r_res(i) = self.interpolate(r_lats(i), r_lons(i), r_pressures(i));
+            }
+            return result;
+        })
         .def("get_bounds", &RegularGrid3DInterpolator::get_bounds);
     
     py::class_<ParticleEngine>(m, "ParticleEngine")

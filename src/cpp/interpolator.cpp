@@ -9,7 +9,7 @@ RegularGrid3DInterpolator::RegularGrid3DInterpolator(
     const std::vector<double>& pressure_coords,
     const std::vector<double>& values,
     double fill_value
-) : lat_coords_(lat_coords), lon_coords_(lon_coords), pressure_coords_(pressure_coords),
+) : is_periodic_lon_(false), lat_coords_(lat_coords), lon_coords_(lon_coords), pressure_coords_(pressure_coords),
     values_(values), fill_value_(fill_value) {
     
     nlat_ = lat_coords_.size();
@@ -35,6 +35,9 @@ RegularGrid3DInterpolator::RegularGrid3DInterpolator(
     dlat_ = (lat_max_ - lat_min_) / (nlat_ - 1);
     dlon_ = (lon_max_ - lon_min_) / (nlon_ - 1);
     dpressure_ = (pressure_max_ - pressure_min_) / (npressure_ - 1);
+    
+    // Auto-detect if longitude grid is periodic (global simulation)
+    is_periodic_lon_ = ((lon_max_ - lon_min_ + dlon_) >= 360.0 - 1e-3);
 }
 
 size_t RegularGrid3DInterpolator::find_index(
@@ -65,11 +68,11 @@ size_t RegularGrid3DInterpolator::find_index(
 
 double RegularGrid3DInterpolator::trilinear_interpolate(
     size_t i0, size_t j0, size_t k0,
+    size_t j1,
     double t_lat, double t_lon, double t_pressure
 ) const {
     
     size_t i1 = std::min(i0 + 1, nlat_ - 1);
-    size_t j1 = std::min(j0 + 1, nlon_ - 1);
     size_t k1 = std::min(k0 + 1, npressure_ - 1);
     
     // Get the 8 corner values
@@ -101,32 +104,55 @@ double RegularGrid3DInterpolator::trilinear_interpolate(
 }
 
 double RegularGrid3DInterpolator::interpolate(double lat, double lon, double pressure) const {
-    // Check bounds
-    if (lat < lat_min_ || lat > lat_max_ || 
-        lon < lon_min_ || lon > lon_max_ ||
+    // Check lat/pressure bounds first
+    if (lat < lat_min_ || lat > lat_max_ ||
         pressure < pressure_min_ || pressure > pressure_max_) {
         return fill_value_;
     }
     
+    double query_lon = lon;
+    if (is_periodic_lon_) {
+        // Wrap query_lon to range [lon_min_, lon_min_ + 360.0)
+        query_lon = lon - std::floor((lon - lon_min_) / 360.0) * 360.0;
+    } else {
+        // Strict bounds check on longitude for regional simulation
+        if (lon < lon_min_ || lon > lon_max_) {
+            return fill_value_;
+        }
+    }
+    
     // Find indices
     size_t i0 = find_index(lat_coords_, lat, nlat_ - 1);
-    size_t j0 = find_index(lon_coords_, lon, nlon_ - 1);
     size_t k0 = find_index(pressure_coords_, pressure, npressure_ - 1);
     
-    // Calculate interpolation weights
-    double t_lat = 0.0, t_lon = 0.0, t_pressure = 0.0;
+    size_t j0 = 0;
+    size_t j1 = 0;
+    double t_lon = 0.0;
+    
+    if (is_periodic_lon_ && query_lon >= lon_max_) {
+        // Periodic wrap-around grid cell
+        j0 = nlon_ - 1;
+        j1 = 0;
+        t_lon = (query_lon - lon_max_) / dlon_;
+    } else {
+        j0 = find_index(lon_coords_, query_lon, nlon_ - 1);
+        j1 = std::min(j0 + 1, nlon_ - 1);
+        if (j0 < nlon_ - 1) {
+            t_lon = (query_lon - lon_coords_[j0]) / (lon_coords_[j1] - lon_coords_[j0]);
+        }
+    }
+    
+    // Calculate other interpolation weights
+    double t_lat = 0.0, t_pressure = 0.0;
     
     if (i0 < nlat_ - 1) {
         t_lat = (lat - lat_coords_[i0]) / (lat_coords_[i0 + 1] - lat_coords_[i0]);
-    }
-    if (j0 < nlon_ - 1) {
-        t_lon = (lon - lon_coords_[j0]) / (lon_coords_[j0 + 1] - lon_coords_[j0]);
     }
     if (k0 < npressure_ - 1) {
         t_pressure = (pressure - pressure_coords_[k0]) / (pressure_coords_[k0 + 1] - pressure_coords_[k0]);
     }
     
-    return trilinear_interpolate(i0, j0, k0, t_lat, t_lon, t_pressure);
+    return trilinear_interpolate(i0, j0, k0, j1, t_lat, t_lon, t_pressure);
 }
 
 void RegularGrid3DInterpolator::interpolate_batch(

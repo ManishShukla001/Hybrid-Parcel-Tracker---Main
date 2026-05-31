@@ -111,6 +111,13 @@ class HybridParticleTracker:
         self.current_step = 0
         self.interpolators = {}
         
+        # Background IO Executor for saving and plotting
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        self.io_executor = ThreadPoolExecutor(max_workers=1)
+        max_tasks = self.config.get('max_pending_save_tasks', 3)
+        self.io_semaphore = threading.Semaphore(max_tasks)  # Rate-limit queue size to prevent memory issues
+        
         if self.config.get('thermo_mode', 'None').upper() == 'FULL_DECOMPOSITION':
             self._load_thermo_background()
 
@@ -393,11 +400,11 @@ class HybridParticleTracker:
                 )
                 
                 
-                if 't' in scalars_data and scalars_data['t'] is not None:
-                    t_data = scalars_data['t']
-                    result['t_cpp'] = self.cpp_engine.create_interpolator(
-                        t_data[0].tolist(), t_data[1].tolist(), t_data[2].tolist(), t_data[3]
-                    )
+                for s_name, s_data in scalars_data.items():
+                    if s_data and s_data[3] is not None:
+                        result[f'{s_name}_cpp'] = self.cpp_engine.create_interpolator(
+                            s_data[0].tolist(), s_data[1].tolist(), s_data[2].tolist(), s_data[3], np.nan
+                        )
                     
                 # Test C++ interpolators with a sample point
                 test_lat = u_data[0][len(u_data[0])//2]
@@ -456,11 +463,11 @@ class HybridParticleTracker:
                 return updated_particles, delta_thermo
             except Exception as e:
                 print(f"C++ engine failed: {e}, falling back to Python")
-                return self._update_particles_python(particles, alpha, interp_curr, interp_next)
+                return self._update_particles_python(particles, alpha, interp_curr, interp_next), None
         else:
             # Use Python implementation with scipy interpolators
             print("Using Python fallback for particle updates")
-            return self._update_particles_python(particles, alpha, interp_curr, interp_next)
+            return self._update_particles_python(particles, alpha, interp_curr, interp_next), None
 
     
     def _update_particles_python(self, particles, alpha, interp_curr, interp_next):
@@ -486,34 +493,55 @@ class HybridParticleTracker:
                 u_interp_curr.grid[1].min(), u_interp_curr.grid[1].max(),  # lon
                 u_interp_curr.grid[2].min(), u_interp_curr.grid[2].max()   # pressure
             )
+            dlon = u_interp_curr.grid[1][1] - u_interp_curr.grid[1][0]
         else:
             # Default bounds
             bounds = (-90, 90, -180, 180, 100, 1100)
+            dlon = 1.0
+            
+        is_periodic_lon = (bounds[3] - bounds[2] + dlon >= 360.0 - 1e-3)
         
         def get_velocity(lat, lon, pressure, t_alpha):
-            # Clip coordinates to bounds
+            # Clip coordinates to bounds (respecting periodicity)
             clipped_lat = np.clip(lat, bounds[0], bounds[1])
-            clipped_lon = np.clip(lon, bounds[2], bounds[3])
+            
+            if is_periodic_lon:
+                wrapped_lon = bounds[2] + (lon - bounds[2]) % 360.0
+                if wrapped_lon <= bounds[3]:
+                    clipped_lon = wrapped_lon
+                    t_lon = 0.0
+                    j_wrap = False
+                else:
+                    t_lon = (wrapped_lon - bounds[3]) / dlon
+                    j_wrap = True
+            else:
+                clipped_lon = np.clip(lon, bounds[2], bounds[3])
+                j_wrap = False
+                
             clipped_pressure = np.clip(pressure, bounds[4], bounds[5])
             
-            point = np.array([clipped_lat, clipped_lon, clipped_pressure])
+            # Helper to interpolate a single interpolator and handle wrap-around cell
+            def interp_val(interp, c_lat, c_lon, c_pres, is_wrap, t):
+                if not is_wrap:
+                    point = np.array([c_lat, c_lon, c_pres])
+                    res = interp(point)
+                    return res[0] if hasattr(res, '__len__') and len(res) == 1 else float(res)
+                else:
+                    v0 = interp(np.array([c_lat, bounds[3], c_pres]))
+                    v1 = interp(np.array([c_lat, bounds[2], c_pres]))
+                    v0 = v0[0] if hasattr(v0, '__len__') and len(v0) == 1 else float(v0)
+                    v1 = v1[0] if hasattr(v1, '__len__') and len(v1) == 1 else float(v1)
+                    return (1.0 - t) * v0 + t * v1
             
             # Get velocities from scipy interpolators
             try:
-                u_c = u_interp_curr(point)
-                v_c = v_interp_curr(point)
-                w_c = w_interp_curr(point)
-                u_n = u_interp_next(point)
-                v_n = v_interp_next(point)
-                w_n = w_interp_next(point)
+                u_c = interp_val(u_interp_curr, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
+                v_c = interp_val(v_interp_curr, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
+                w_c = interp_val(w_interp_curr, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
                 
-                # Handle scalar vs array returns
-                if hasattr(u_c, '__len__') and len(u_c) == 1:
-                    u_c, v_c, w_c = u_c[0], v_c[0], w_c[0]
-                    u_n, v_n, w_n = u_n[0], v_n[0], w_n[0]
-                elif hasattr(u_c, '__len__'):
-                    u_c, v_c, w_c = float(u_c), float(v_c), float(w_c)
-                    u_n, v_n, w_n = float(u_n), float(v_n), float(w_n)
+                u_n = interp_val(u_interp_next, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
+                v_n = interp_val(v_interp_next, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
+                w_n = interp_val(w_interp_next, clipped_lat, clipped_lon, clipped_pressure, j_wrap, t_lon)
                 
                 # Temporal interpolation
                 u = (1.0 - t_alpha) * u_c + t_alpha * u_n
@@ -539,56 +567,65 @@ class HybridParticleTracker:
                 print(f"Velocity interpolation error: {e}")
                 return np.array([0.0, 0.0, 0.0])
         
+        def sanitize_coords(p):
+            # Polar boundary crossing wrapping
+            if p[0] > 90.0:
+                p[0] = 180.0 - p[0]
+                p[1] += 180.0
+            elif p[0] < -90.0:
+                p[0] = -180.0 - p[0]
+                p[1] += 180.0
+            # Longitude wrapping to standard [-180, 180) range
+            p[1] = (p[1] + 180.0) % 360.0 - 180.0
+            if p[1] == -180.0: p[1] = 180.0
+            # Pressure clamping
+            p[2] = np.clip(p[2], bounds[4], bounds[5])
+            return p
+        
         # Update particles using RK4
         updated_particles = np.zeros_like(particles)
         
         for i, particle in enumerate(particles):
             p_id, lat, lon, pressure = particle
             pos = np.array([lat, lon, pressure])
+            pos = sanitize_coords(pos)
             
             # RK4 stages
             k1 = get_velocity(pos[0], pos[1], pos[2], alpha)
             
             pos_k2 = pos + 0.5 * dt_seconds * k1
+            pos_k2 = sanitize_coords(pos_k2)
             alpha_k2 = alpha + 0.5 * (dt_seconds / 3600.0 / self.config['data_interval_hours'])
             k2 = get_velocity(pos_k2[0], pos_k2[1], pos_k2[2], alpha_k2)
             
             pos_k3 = pos + 0.5 * dt_seconds * k2
+            pos_k3 = sanitize_coords(pos_k3)
             alpha_k3 = alpha + 0.5 * (dt_seconds / 3600.0 / self.config['data_interval_hours'])
             k3 = get_velocity(pos_k3[0], pos_k3[1], pos_k3[2], alpha_k3)
             
             pos_k4 = pos + dt_seconds * k3
+            pos_k4 = sanitize_coords(pos_k4)
             alpha_k4 = alpha + 1.0 * (dt_seconds / 3600.0 / self.config['data_interval_hours'])
             k4 = get_velocity(pos_k4[0], pos_k4[1], pos_k4[2], alpha_k4)
             
             # Combine RK4 stages
             delta_pos = (dt_seconds / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
             new_pos = pos + delta_pos
-            
-            # Apply global boundaries
-            # Latitude clamping
-            new_pos[0] = np.clip(new_pos[0], -90.0, 90.0)
-            
-            # Longitude wrapping to [-180, 180)
-            new_pos[1] = (new_pos[1] + 180.0) % 360.0 - 180.0
-            # Ensure it's exactly 180 if it was -180 after modulo, or handle edge cases if needed
-            if new_pos[1] == -180.0: new_pos[1] = 180.0 
-            
-            # Pressure clamping (already present)
-            new_pos[2] = np.clip(new_pos[2], bounds[4], bounds[5])
+            new_pos = sanitize_coords(new_pos)
             
             updated_particles[i] = [p_id, new_pos[0], new_pos[1], new_pos[2]]
         
         return updated_particles
     
-    def save_checkpoint(self, particles: np.ndarray, current_step: int, filename: str = "latest_checkpoint.npz"):
+    def save_checkpoint(self, particles: np.ndarray, current_step: int, filename: str = "latest_checkpoint.npz", thermo_states: Optional[np.ndarray] = None):
         """Save simulation state to disk"""
         checkpoint_dir = Path(self.config['checkpoint_dir'])
         filepath = checkpoint_dir / filename
         
+        t_states = thermo_states if thermo_states is not None else self.thermo_states
         np.savez(filepath,
                  particles=particles,
-                 thermo_states=self.thermo_states if self.thermo_states is not None else np.array([]),
+                 thermo_states=t_states if t_states is not None else np.array([]),
                  current_step=current_step,
                  **self.config)
         print(f"Checkpoint saved to {filepath} at step {current_step}")
@@ -614,7 +651,8 @@ class HybridParticleTracker:
             return None
     
     def save_particles(self, particles: np.ndarray, time_identifier: Any, 
-                       scalar_values: Optional[Dict[str, np.ndarray]] = None):        
+                       scalar_values: Optional[Dict[str, np.ndarray]] = None,
+                       thermo_states: Optional[np.ndarray] = None):        
         """Save particle data to CSV or NetCDF"""
         output_dir = Path(self.config['output_dir'])
         output_format = self.config['output_format'].upper()
@@ -642,6 +680,8 @@ class HybridParticleTracker:
             'cc': ('fraction_of_cloud_cover', '0-1', 'Fraction of Cloud Cover')
         }
 
+        actual_thermo_states = thermo_states if thermo_states is not None else self.thermo_states
+
         if output_format == "CSV":
             filename = output_dir / f'particles_output_{filename_time_str}.csv'
             # Ensure particles array has at least 4 columns before trying to access them
@@ -662,18 +702,18 @@ class HybridParticleTracker:
                         data_dict[col_name] = s_val
 
             # Add thermo states to output
-            if self.thermo_states is not None:
+            if actual_thermo_states is not None:
                 mode = self.config.get('thermo_mode', 'None').upper()
                 if mode == 'SIMPLE_SUBTRACTION':
-                    data_dict['delta_t'] = self.thermo_states[:, 0]
+                    data_dict['delta_t'] = actual_thermo_states[:, 0]
                 elif mode == 'POTENTIAL_TEMPERATURE':
-                    data_dict['delta_theta'] = self.thermo_states[:, 0]
-                    data_dict['delta_dse'] = self.thermo_states[:, 1]
+                    data_dict['delta_theta'] = actual_thermo_states[:, 0]
+                    data_dict['delta_dse'] = actual_thermo_states[:, 1]
                 elif mode == 'FULL_DECOMPOSITION':
-                    data_dict['seasonality_term'] = self.thermo_states[:, 0]
-                    data_dict['advective_term'] = self.thermo_states[:, 1]
-                    data_dict['adiabatic_term'] = self.thermo_states[:, 2]
-                    data_dict['diabatic_term'] = self.thermo_states[:, 3]
+                    data_dict['seasonality_term'] = actual_thermo_states[:, 0]
+                    data_dict['advective_term'] = actual_thermo_states[:, 1]
+                    data_dict['adiabatic_term'] = actual_thermo_states[:, 2]
+                    data_dict['diabatic_term'] = actual_thermo_states[:, 3]
 
             df = pd.DataFrame(data_dict)
             df.to_csv(filename, index=False, float_format='%.5f')
@@ -706,18 +746,18 @@ class HybridParticleTracker:
                         data_vars[n_info[0]] = (('particle_id',), s_data_typed, {'units': n_info[1], 'long_name': n_info[2]})
             
             # Add thermo states to NetCDF output
-            if self.thermo_states is not None:
+            if actual_thermo_states is not None:
                 mode = self.config.get('thermo_mode', 'None').upper()
                 if mode == 'SIMPLE_SUBTRACTION':
-                    data_vars['delta_t'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Temperature'})
+                    data_vars['delta_t'] = (('particle_id',), actual_thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Temperature'})
                 elif mode == 'POTENTIAL_TEMPERATURE':
-                    data_vars['delta_theta'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Potential Temperature'})
-                    data_vars['delta_dse'] = (('particle_id',), self.thermo_states[:, 1].astype(np.float32), {'units': 'J/kg', 'long_name': 'Change in Dry Static Energy'})
+                    data_vars['delta_theta'] = (('particle_id',), actual_thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Change in Potential Temperature'})
+                    data_vars['delta_dse'] = (('particle_id',), actual_thermo_states[:, 1].astype(np.float32), {'units': 'J/kg', 'long_name': 'Change in Dry Static Energy'})
                 elif mode == 'FULL_DECOMPOSITION':
-                    data_vars['seasonality_term'] = (('particle_id',), self.thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Seasonality Term'})
-                    data_vars['advective_term'] = (('particle_id',), self.thermo_states[:, 1].astype(np.float32), {'units': 'K', 'long_name': 'Advective Term'})
-                    data_vars['adiabatic_term'] = (('particle_id',), self.thermo_states[:, 2].astype(np.float32), {'units': 'K', 'long_name': 'Adiabatic Term'})
-                    data_vars['diabatic_term'] = (('particle_id',), self.thermo_states[:, 3].astype(np.float32), {'units': 'K', 'long_name': 'Diabatic Term'})
+                    data_vars['seasonality_term'] = (('particle_id',), actual_thermo_states[:, 0].astype(np.float32), {'units': 'K', 'long_name': 'Seasonality Term'})
+                    data_vars['advective_term'] = (('particle_id',), actual_thermo_states[:, 1].astype(np.float32), {'units': 'K', 'long_name': 'Advective Term'})
+                    data_vars['adiabatic_term'] = (('particle_id',), actual_thermo_states[:, 2].astype(np.float32), {'units': 'K', 'long_name': 'Adiabatic Term'})
+                    data_vars['diabatic_term'] = (('particle_id',), actual_thermo_states[:, 3].astype(np.float32), {'units': 'K', 'long_name': 'Diabatic Term'})
 
             coords = {'particle_id': particle_ids_coord}
             if isinstance(time_identifier, datetime):
@@ -755,6 +795,30 @@ class HybridParticleTracker:
                 print(f"ERROR saving NetCDF file {filename}: {e_nc_save}")
                 import traceback
                 traceback.print_exc()
+
+    def _async_save_and_plot(self, particles, time_identifier, step, scalar_values, thermo_states, checkpoint_filename=None):
+        try:
+            if time_identifier is not None:
+                self.save_particles(particles, time_identifier, scalar_values=scalar_values, thermo_states=thermo_states)
+                plot_lat_range_config = self.config.get('plot_lat_range')
+                plot_lon_range_config = self.config.get('plot_lon_range')
+                self.visualizer.plot_particles(particles, time_identifier, 
+                                               step,
+                                               plot_lat_range=plot_lat_range_config,
+                                               plot_lon_range=plot_lon_range_config)
+            if checkpoint_filename is not None:
+                self.save_checkpoint(particles, step - 1, filename=checkpoint_filename, thermo_states=thermo_states)
+        except Exception as e:
+            print(f"ERROR in background save and plot: {e}")
+        finally:
+            self.io_semaphore.release()
+
+    def _submit_io_task(self, particles, time_identifier, step, scalar_values, thermo_states, checkpoint_filename=None):
+        self.io_semaphore.acquire()  # Blocks if we already have 3 tasks queued/running to protect memory
+        self.io_executor.submit(
+            self._async_save_and_plot,
+            particles, time_identifier, step, scalar_values, thermo_states, checkpoint_filename
+        )
     
     def run_simulation(self, resume: bool = True):
         """Run the main simulation loop"""
@@ -876,15 +940,12 @@ class HybridParticleTracker:
                  # Fallback only if no start time provided (unlikely with current config)
                  initial_time_identifier_for_output = initial_output_naming_hour
             
-            self.save_particles(self.particles, initial_time_identifier_for_output)
-            # Pass plot ranges from config
-            plot_lat_range_config = self.config.get('plot_lat_range')
-            plot_lon_range_config = self.config.get('plot_lon_range')
-            self.visualizer.plot_particles(self.particles, initial_time_identifier_for_output, 
-                                           initial_absolute_step_offset,
-                                           plot_lat_range=plot_lat_range_config,
-                                           plot_lon_range=plot_lon_range_config)
-            self.save_checkpoint(self.particles, initial_absolute_step_offset - 1) # Checkpoint for state *before* first step
+            particles_copy = self.particles.copy()
+            thermo_copy = self.thermo_states.copy() if self.thermo_states is not None else None
+            self._submit_io_task(
+                particles_copy, initial_time_identifier_for_output, initial_absolute_step_offset, None, thermo_copy,
+                checkpoint_filename="latest_checkpoint.npz"
+            )
             # last_saved_output_hour and last_checkpoint_step are already set for this new simulation case
             # loop_start_step is already initial_absolute_step_offset
         
@@ -980,7 +1041,7 @@ class HybridParticleTracker:
                 res = self.update_particles(self.particles, alpha, interp_curr, interp_next)
                 if isinstance(res, tuple):
                     self.particles, delta_thermo = res
-                    if self.config.get('thermo_mode', 'None').upper() != 'NONE' and delta_thermo.size > 0:
+                    if self.config.get('thermo_mode', 'None').upper() != 'NONE' and delta_thermo is not None and delta_thermo.size > 0:
                         if self.thermo_states is None:
                             self.thermo_states = np.zeros_like(delta_thermo)
                         self.thermo_states += delta_thermo
@@ -1049,37 +1110,60 @@ class HybridParticleTracker:
                 )
 
                 final_scalars = {}
-                # Dynamically find any loaded scalar interpolators ending with '_scipy' 
-                # (excluding the base u, v, w)
                 expected_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
                 
+                # Check if we can use C++ interpolators
+                use_cpp_scalars = (interp_curr.get('type') == 'cpp' and interp_next.get('type') == 'cpp')
+                lats = self.particles[:, 1]
+                lons = self.particles[:, 2]
+                pressures = self.particles[:, 3]
+                
                 for s_key in expected_scalars:
-                    interp_key = f"{s_key}_scipy"
-                    if interp_curr.get(interp_key) and interp_next.get(interp_key):
+                    interp_key_cpp = f"{s_key}_cpp"
+                    interp_key_scipy = f"{s_key}_scipy"
+                    if use_cpp_scalars and interp_key_cpp in interp_curr and interp_key_cpp in interp_next:
                         try:
-                            s_curr_vals = interp_curr[interp_key](self.particles[:, 1:4])
-                            s_next_vals = interp_next[interp_key](self.particles[:, 1:4])
+                            s_curr_vals = interp_curr[interp_key_cpp].interpolate_batch(lats, lons, pressures)
+                            s_next_vals = interp_next[interp_key_cpp].interpolate_batch(lats, lons, pressures)
                             s_final = (1.0 - alpha_for_scalars) * s_curr_vals + alpha_for_scalars * s_next_vals
                             final_scalars[s_key] = np.nan_to_num(s_final, nan=np.nan)
                         except Exception as e_s:
-                            print(f"WARNING: '{s_key}' interpolation failed at output step {step}: {e_s}")
+                            print(f"WARNING: C++ '{s_key}' interpolation failed at step {step}: {e_s}")
+                    elif interp_key_scipy in interp_curr and interp_key_scipy in interp_next:
+                        try:
+                            s_curr_vals = interp_curr[interp_key_scipy](self.particles[:, 1:4])
+                            s_next_vals = interp_next[interp_key_scipy](self.particles[:, 1:4])
+                            s_final = (1.0 - alpha_for_scalars) * s_curr_vals + alpha_for_scalars * s_next_vals
+                            final_scalars[s_key] = np.nan_to_num(s_final, nan=np.nan)
+                        except Exception as e_s:
+                            print(f"WARNING: Scipy '{s_key}' interpolation failed at step {step}: {e_s}")
 
-                # Pass the appropriate time identifier for naming
-                self.save_particles(self.particles, time_identifier_for_output, scalar_values=final_scalars) 
-                # Plotting with the time identifier for output
-                # Pass plot ranges from config
-                plot_lat_range_config = self.config.get('plot_lat_range')
-                plot_lon_range_config = self.config.get('plot_lon_range')
-                self.visualizer.plot_particles(self.particles, time_identifier_for_output, 
-                                               step + 1,
-                                               plot_lat_range=plot_lat_range_config,
-                                               plot_lon_range=plot_lon_range_config)
+                # Pass the appropriate time identifier for naming asynchronously
+                particles_copy = self.particles.copy()
+                thermo_copy = self.thermo_states.copy() if self.thermo_states is not None else None
+                
+                # Check if it's checkpoint time
+                is_checkpoint_time = False
+                if (step > last_checkpoint_step and (step + 1) % checkpoint_interval_steps == 0):
+                    is_checkpoint_time = True
+                
+                chk_name = "latest_checkpoint.npz" if is_checkpoint_time else None
+                self._submit_io_task(
+                    particles_copy, time_identifier_for_output, step + 1, final_scalars, thermo_copy,
+                    checkpoint_filename=chk_name
+                )
                 last_saved_output_hour = current_absolute_sim_hour_at_step_end # Update with the absolute hour
-            
-            if (step > last_checkpoint_step and 
-                (step + 1) % checkpoint_interval_steps == 0):
-                self.save_checkpoint(self.particles, step) # Saves as "latest_checkpoint.npz"
-                last_checkpoint_step = step
+                if is_checkpoint_time:
+                    last_checkpoint_step = step
+            else:
+                if (step > last_checkpoint_step and (step + 1) % checkpoint_interval_steps == 0):
+                    particles_copy = self.particles.copy()
+                    thermo_copy = self.thermo_states.copy() if self.thermo_states is not None else None
+                    self._submit_io_task(
+                        particles_copy, None, step + 1, None, thermo_copy,
+                        checkpoint_filename="latest_checkpoint.npz"
+                    )
+                    last_checkpoint_step = step
         
         pbar.close()
         print("--- Simulation Finished ---")
@@ -1091,32 +1175,48 @@ class HybridParticleTracker:
             # Interpolate scalars for the final state
             final_alpha_for_scalars = np.clip(
                 (final_hours_elapsed_since_effective_start - current_data_hour) / self.config['data_interval_hours'], 0.0, 1.0
-             )
+            )
             
             final_scalars = {}
             expected_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
             
+            use_cpp_scalars = (interp_curr.get('type') == 'cpp' and interp_next.get('type') == 'cpp')
+            lats = self.particles[:, 1]
+            lons = self.particles[:, 2]
+            pressures = self.particles[:, 3]
+            
             for s_key in expected_scalars:
-                interp_key = f"{s_key}_scipy"
-                if interp_key in interp_curr and interp_key in interp_next and interp_curr[interp_key] and interp_next[interp_key]:
+                interp_key_cpp = f"{s_key}_cpp"
+                interp_key_scipy = f"{s_key}_scipy"
+                if use_cpp_scalars and interp_key_cpp in interp_curr and interp_key_cpp in interp_next:
                     try:
-                        s_curr_vals = interp_curr[interp_key](self.particles[:, 1:4])
-                        s_next_vals = interp_next[interp_key](self.particles[:, 1:4])
+                        s_curr_vals = interp_curr[interp_key_cpp].interpolate_batch(lats, lons, pressures)
+                        s_next_vals = interp_next[interp_key_cpp].interpolate_batch(lats, lons, pressures)
                         s_final = (1.0 - final_alpha_for_scalars) * s_curr_vals + final_alpha_for_scalars * s_next_vals
                         final_scalars[s_key] = np.nan_to_num(s_final, nan=0.0)
                     except Exception as e_s:
-                        print(f"WARNING: '{s_key}' final interpolation failed: {e_s}")
+                        print(f"WARNING: C++ '{s_key}' final interpolation failed: {e_s}")
+                elif interp_key_scipy in interp_curr and interp_key_scipy in interp_next:
+                    try:
+                        s_curr_vals = interp_curr[interp_key_scipy](self.particles[:, 1:4])
+                        s_next_vals = interp_next[interp_key_scipy](self.particles[:, 1:4])
+                        s_final = (1.0 - final_alpha_for_scalars) * s_curr_vals + final_alpha_for_scalars * s_next_vals
+                        final_scalars[s_key] = np.nan_to_num(s_final, nan=0.0)
+                    except Exception as e_s:
+                        print(f"WARNING: Scipy '{s_key}' final interpolation failed: {e_s}")
 
             if self.config['data_source'].upper() == "API":
                 final_time_identifier_for_output = (effective_start_datetime + timedelta(hours=final_hours_elapsed_since_effective_start))
             else: # CSV
                 final_time_identifier_for_output = int(np.floor(csv_actual_start_hour + final_hours_elapsed_since_effective_start))
-            self.save_particles(self.particles, final_time_identifier_for_output, scalar_values=final_scalars)
-            # Pass plot ranges from config for final plot
-            plot_lat_range_config = self.config.get('plot_lat_range')
-            plot_lon_range_config = self.config.get('plot_lon_range')
-            self.visualizer.plot_particles(self.particles, final_time_identifier_for_output, 
-                                           step + 1,
-                                           plot_lat_range=plot_lat_range_config,
-                                           plot_lon_range=plot_lon_range_config)
-            self.save_checkpoint(self.particles, step, f"final_state_step_{step}.npz")
+            
+            particles_copy = self.particles.copy()
+            thermo_copy = self.thermo_states.copy() if self.thermo_states is not None else None
+            self._submit_io_task(
+                particles_copy, final_time_identifier_for_output, step + 1, final_scalars, thermo_copy,
+                checkpoint_filename=f"final_state_step_{step}.npz"
+            )
+
+        # Wait for all background IO tasks to finish
+        print("Waiting for background saving tasks to complete...")
+        self.io_executor.shutdown(wait=True)

@@ -27,11 +27,14 @@ public:
         const std::vector<double>& pressures,
         std::vector<double>& results
     ) const;
+    // Check if longitude is periodic
+    bool is_periodic_lon() const { return is_periodic_lon_; }
     
     // Get coordinate bounds
     std::array<double, 6> get_bounds() const;
     
 private:
+    bool is_periodic_lon_;
     std::vector<double> lat_coords_;
     std::vector<double> lon_coords_;
     std::vector<double> pressure_coords_;
@@ -45,6 +48,7 @@ private:
     size_t find_index(const std::vector<double>& coords, double value, size_t max_idx) const;
     double trilinear_interpolate(
         size_t i0, size_t j0, size_t k0,
+        size_t j1,
         double t_lat, double t_lon, double t_pressure
     ) const;
     

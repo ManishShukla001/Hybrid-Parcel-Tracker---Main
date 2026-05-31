@@ -29,9 +29,12 @@ std::array<double, 3> RK4Integrator::get_velocity(
     const std::array<double, 6>& bounds
 ) const {
     
-    // Clip coordinates to bounds
+    // Clip coordinates to bounds (respecting periodicity)
     double clipped_lat = std::clamp(lat, bounds[0], bounds[1]);
-    double clipped_lon = std::clamp(lon, bounds[2], bounds[3]);
+    double clipped_lon = lon;
+    if (!u_curr.is_periodic_lon()) {
+        clipped_lon = std::clamp(lon, bounds[2], bounds[3]);
+    }
     double clipped_pressure = std::clamp(pressure, bounds[4], bounds[5]);
     
     // Get velocities from current and next time steps
@@ -73,7 +76,10 @@ static double interpolate_scalar(
     const std::array<double, 6>& bounds) {
     if (!curr || !next) return 0.0;
     double c_lat = std::clamp(lat, bounds[0], bounds[1]);
-    double c_lon = std::clamp(lon, bounds[2], bounds[3]);
+    double c_lon = lon;
+    if (!curr->is_periodic_lon()) {
+        c_lon = std::clamp(lon, bounds[2], bounds[3]);
+    }
     double c_p = std::clamp(pressure, bounds[4], bounds[5]);
     double val_curr = curr->interpolate(c_lat, c_lon, c_p);
     double val_next = next->interpolate(c_lat, c_lon, c_p);
@@ -96,6 +102,25 @@ std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     
     std::array<double, 3> pos = {lat, lon, pressure};
     
+    // Lambda to sanitize/wrap coordinates at each RK4 sub-step
+    auto sanitize_coords = [&](std::array<double, 3>& p) {
+        // Polar boundary crossing wrapping
+        if (p[0] > 90.0) {
+            p[0] = 180.0 - p[0];
+            p[1] += 180.0;
+        } else if (p[0] < -90.0) {
+            p[0] = -180.0 - p[0];
+            p[1] += 180.0;
+        }
+        // Longitude wrapping to standard [-180, 180) range (or wrapped inside interpolator anyway)
+        p[1] = p[1] - std::floor((p[1] + 180.0) / 360.0) * 360.0;
+        // Pressure clamping
+        p[2] = std::clamp(p[2], bounds[4], bounds[5]);
+    };
+    
+    // Sanitize initial coordinate just in case
+    sanitize_coords(pos);
+    
     // RK4 stages
     auto k1 = get_velocity(pos[0], pos[1], pos[2], alpha,
                           u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds);
@@ -104,6 +129,7 @@ std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     for (int i = 0; i < 3; ++i) {
         pos_k2[i] += 0.5 * dt_seconds_ * k1[i];
     }
+    sanitize_coords(pos_k2);
     double alpha_k2 = alpha + 0.5 * (dt_seconds_ / 3600.0 / data_interval_hours_);
     auto k2 = get_velocity(pos_k2[0], pos_k2[1], pos_k2[2], alpha_k2,
                           u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds);
@@ -112,6 +138,7 @@ std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     for (int i = 0; i < 3; ++i) {
         pos_k3[i] += 0.5 * dt_seconds_ * k2[i];
     }
+    sanitize_coords(pos_k3);
     double alpha_k3 = alpha + 0.5 * (dt_seconds_ / 3600.0 / data_interval_hours_);
     auto k3 = get_velocity(pos_k3[0], pos_k3[1], pos_k3[2], alpha_k3,
                           u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds);
@@ -120,6 +147,7 @@ std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     for (int i = 0; i < 3; ++i) {
         pos_k4[i] += dt_seconds_ * k3[i];
     }
+    sanitize_coords(pos_k4);
     double alpha_k4 = alpha + 1.0 * (dt_seconds_ / 3600.0 / data_interval_hours_);
     auto k4 = get_velocity(pos_k4[0], pos_k4[1], pos_k4[2], alpha_k4,
                           u_curr, v_curr, w_curr, u_next, v_next, w_next, bounds);
@@ -135,9 +163,12 @@ std::pair<std::array<double, 4>, ThermoState> RK4Integrator::integrate_particle(
     double new_lon = pos[1] + delta_pos[1];
     double new_pressure = pos[2] + delta_pos[2];
     
-    new_lat = std::clamp(new_lat, -90.0, 90.0);
-    new_lon = new_lon - std::floor((new_lon + 180.0) / 360.0) * 360.0;
-    new_pressure = std::clamp(new_pressure, bounds[4], bounds[5]);
+    std::array<double, 3> final_pos = {new_lat, new_lon, new_pressure};
+    sanitize_coords(final_pos);
+    
+    new_lat = final_pos[0];
+    new_lon = final_pos[1];
+    new_pressure = final_pos[2];
     
     std::array<double, 4> new_particle = {particle_id, new_lat, new_lon, new_pressure};
     ThermoState delta_ts;

@@ -33,39 +33,39 @@ def main():
         'nc_data_dir': Path("./examples/nc_files"), # Used if data_source is "NC"
         'nc_file_pattern': None, # Optional: pattern to match files. If None, auto-detects "combined_YYYYMMDD_HH.nc"
         
-        'output_dir': Path("./examples/hybrid_particle_output_Kayal1"), # General output
+        'output_dir': Path("./examples/hybrid_particle_output"), # General output
         'output_format': "NETCDF", # "CSV" or "NETCDF"
-        'checkpoint_dir': Path("./examples/hybrid_particle_output_Kayal1/checkpoints"),
+        'checkpoint_dir': Path("./examples/hybrid_particle_output/checkpoints"),
         
         # ERA5 Pressure Levels (must match your CSV data)
         # For NC mode, these are automatically extracted from the files.
         'pressure_levels': np.array([
-            50, 70, 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450,
-            500, 550, 600, 650, 700, 750, 775, 800, 825, 850, 875, 900, 925,
-            950, 975, 1000
+            100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800,
+            825, 850, 875, 900, 925, 950, 975, 1000
         ], dtype=int),
         
         # Particle Initialization Parameters
-        'initialization_lat_range': (-15, 50), #(-15, 30),  # Latitude range (min, max)
-        'initialization_lon_range': (5, 145), #(65, 120),  # Longitude range (min, max)
+        'initialization_lat_range': (25, 35),  # Latitude range (min, max)
+        'initialization_lon_range': (-105, -95),  # Longitude range (min, max)
         # Pressure levels for initialization (e.g., [1000, 850, 500]). If None, uses a default range.
-        'initialization_pressure_levels': [1000,  970,  940,  910,  880,  850,  820,  790,  760,  730,  700, 670,  640,  610,  580,  550,  520,  490,  460,  430,  400,  370, 340,  310,  280,  250,  220,  190, 160, 130, 100],#[np.arange(1000, 200 - 30, -30)],#[1000, 925, 850, 700, 500, 300], 
-        'initialization_spacing_km': 30,       # Grid spacing in kilometers for initialization
+        'initialization_pressure_levels': [1000,  970,  940,  910,  880,  850,  820,  790,  760,  730,  700, 670,  640,  610,  580,  550,  520,  490,  460,  430,  400,  370, 340,  310,  280,  250,  220,  190, 160, 130],#[np.arange(1000, 200 - 30, -30)],#[1000, 925, 850, 700, 500, 300], 
+        'initialization_spacing_km': 10,       # Grid spacing in kilometers for initialization
         
         # Simulation Parameters
-        'simulation_start_datetime': "2023-12-08 00:00:00", # Matched to available NC files (combined_20250321_00.nc)
-        'simulation_end_datetime': "2023-12-22 23:00:00",   # Used if data_source is "API" or to limit NC duration
+        'simulation_start_datetime': "2025-03-21 00:00:00", # Matched to available NC files (combined_20250321_00.nc)
+        'simulation_end_datetime': "2025-03-21 02:00:00",   # Used if data_source is "API" or to limit NC duration
         'simulation_start_hour': 0,     # Absolute hour to start the simulation
                                         
-        'total_simulation_hours': 400,    # Run for 1 hour (needs files for 00:00 and 01:00)
+        'total_simulation_hours': 2,    # Run for 2 hours
         'data_interval_hours': 1,       # How often new velocity data files are available (NC files are hourly)
         'simulation_step_hours': 0.25,   # Particle position update interval
         'output_interval_hours': 1,     # How often to save particle positions and plots
-        'checkpoint_interval_hours': 24, # How often to save checkpoints
+        'checkpoint_interval_hours': 48, # How often to save checkpoints
+        'max_pending_save_tasks': 3,    # Max background saving tasks queued to prevent memory issues (use 1 for near-synchronous)
         
         # Visualization extent (optional, defaults in visualizer if not provided here)
-        'plot_lat_range': (-20, 60),
-        'plot_lon_range': (0, 150),
+        'plot_lat_range': (-30, 80),
+        'plot_lon_range': (-150, -20),
         
         # Thermodynamic Tracking Parameters
         # Mode options: 'NONE', 'SIMPLE_SUBTRACTION', 'POTENTIAL_TEMPERATURE', 'FULL_DECOMPOSITION'

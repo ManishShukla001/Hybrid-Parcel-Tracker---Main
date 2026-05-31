@@ -33,6 +33,10 @@ class APIDataHandler:
         self.area = [init_lat_range[1], init_lon_range[0], init_lat_range[0], init_lon_range[1]]
 
         self.client = None # Lazy initialization to avoid connection in offline mode if files exist
+        
+        # Dataset cache to avoid re-opening daily files repeatedly
+        self.cached_ds = None
+        self.cached_filepath = None
 
     def _get_daily_filepath(self, date_obj: datetime.date) -> Path:
         """Generates the filepath for a daily NetCDF file."""
@@ -52,7 +56,10 @@ class APIDataHandler:
             "format": "netcdf", # Changed from data_format for clarity
             "variable": [
                 "u_component_of_wind", "v_component_of_wind", "vertical_velocity",
-                "specific_humidity", "temperature"
+                "specific_humidity", "temperature", "geopotential",
+                "specific_cloud_liquid_water_content", "specific_cloud_ice_water_content",
+                "specific_rain_water_content", "specific_snow_water_content",
+                "fraction_of_cloud_cover"
             ],
             "pressure_level": self.pressure_levels_str,
             "year": str(date_obj.year),
@@ -89,124 +96,141 @@ class APIDataHandler:
         filepath = self._get_daily_filepath(target_date)
         print(f"Loading fields from {filepath} for hour {target_datetime_utc.hour} UTC...")
 
+        # Open and cache daily dataset if it's a new file
+        if self.cached_filepath != filepath:
+            if self.cached_ds is not None:
+                try:
+                    self.cached_ds.close()
+                except Exception as e_close:
+                    print(f"WARNING: Error closing cached dataset: {e_close}")
+            self.cached_ds = None
+            self.cached_filepath = None
+            import gc
+            gc.collect()
+            
+            # Load the entire dataset into memory to avoid frequent disk I/O when slicing hourly data
+            if self.config.get('cache_in_memory', True):
+                print(f"Opening and loading NetCDF dataset into memory: {filepath}")
+                try:
+                    with xr.open_dataset(filepath) as ds_temp:
+                        self.cached_ds = ds_temp.load()
+                    self.cached_filepath = filepath
+                except Exception as e_open:
+                    print(f"ERROR: Failed to load dataset {filepath} into memory: {e_open}")
+                    return None
+            else:
+                print(f"Opening NetCDF dataset (lazy access): {filepath}")
+                try:
+                    self.cached_ds = xr.open_dataset(filepath)
+                    self.cached_filepath = filepath
+                except Exception as e_open:
+                    print(f"ERROR: Failed to open dataset {filepath}: {e_open}")
+                    return None
+
+        ds = self.cached_ds
+        if ds is None:
+            return None
+
         try:
-            with xr.open_dataset(filepath) as ds:
-                # --- Debug: Print dataset structure (uncomment if needed for further debugging) ---
-                #print(f"--- Inspecting NetCDF: {filepath} ---")
-                #print(f"Dataset Coords: {ds.coords}")
-                #print(f"Dataset Dimensions: {ds.dims}")
-                #print(f"Dataset Data Vars: {list(ds.data_vars.keys())}")
-                # Example: print details of a specific variable
-                #if 'u' in ds.data_vars:
-                    #print(f"Details for 'u' variable: {ds['u']}")
-                # --- End Debug ---
+            # Select data for the specific hour
+            data_for_hour = None
+            time_coord_name = None
 
-                # Select data for the specific hour
-                data_for_hour = None
-                time_coord_name = None
+            # Try common time coordinate names
+            possible_time_coords = ['time', 'valid_time', 'forecast_time', 't']
+            for tc_name in possible_time_coords:
+                if tc_name in ds.coords:
+                    time_coord_name = tc_name
+                    break
+            
+            if not time_coord_name:
+                print(f"ERROR: Could not find a recognizable time coordinate in {filepath}. Available coords: {list(ds.coords.keys())}")
+                return None
 
-                # Try common time coordinate names
-                possible_time_coords = ['time', 'valid_time', 'forecast_time', 't']
-                for tc_name in possible_time_coords:
-                    if tc_name in ds.coords:
-                        time_coord_name = tc_name
-                        break
-                
-                if not time_coord_name:
-                    print(f"ERROR: Could not find a recognizable time coordinate in {filepath}. Available coords: {list(ds.coords.keys())}")
+            # Attempt to select by datetime64 value first
+            try:
+                time_to_select_dt64 = np.datetime64(target_datetime_utc.replace(tzinfo=None))
+                data_for_hour = ds.sel({time_coord_name: time_to_select_dt64})
+                print(f"Selected time using datetime64: {time_to_select_dt64}")
+            except KeyError:
+                # If direct datetime selection fails, try selecting by hour index if the time dim is just 0-23
+                if ds[time_coord_name].ndim == 1 and len(ds[time_coord_name]) == 24: # Assuming 24 hourly slices
+                    hour_index = target_datetime_utc.hour
+                    data_for_hour = ds.isel({time_coord_name: hour_index})
+                    print(f"Selected time using hour index: {hour_index} (for target hour {target_datetime_utc.hour})")
+                else:
+                    print(f"ERROR: Time {time_to_select_dt64} not found in {filepath} using coordinate '{time_coord_name}'.")
+                    print(f"Available times for '{time_coord_name}': {ds[time_coord_name].values}")
                     return None
+            except Exception as e_sel:
+                print(f"ERROR during time selection with '{time_coord_name}': {e_sel}")
+                return None
 
-                # Attempt to select by datetime64 value first
-                try:
-                    time_to_select_dt64 = np.datetime64(target_datetime_utc.replace(tzinfo=None))
-                    data_for_hour = ds.sel({time_coord_name: time_to_select_dt64})
-                    print(f"Selected time using datetime64: {time_to_select_dt64}")
-                except KeyError:
-                    # If direct datetime selection fails, try selecting by hour index if the time dim is just 0-23
-                    if ds[time_coord_name].ndim == 1 and len(ds[time_coord_name]) == 24: # Assuming 24 hourly slices
-                        hour_index = target_datetime_utc.hour
-                        data_for_hour = ds.isel({time_coord_name: hour_index})
-                        print(f"Selected time using hour index: {hour_index} (for target hour {target_datetime_utc.hour})")
-                    else:
-                        print(f"ERROR: Time {time_to_select_dt64} not found in {filepath} using coordinate '{time_coord_name}'.")
-                        print(f"Available times for '{time_coord_name}': {ds[time_coord_name].values}")
-                        return None
-                except Exception as e_sel:
-                    print(f"ERROR during time selection with '{time_coord_name}': {e_sel}")
-                    return None
+            if data_for_hour is None:
+                print(f"ERROR: Could not select data for hour {target_datetime_utc.hour} from {filepath}")
+                return None
 
-                if data_for_hour is None:
-                    print(f"ERROR: Could not select data for hour {target_datetime_utc.hour} from {filepath}")
-                    return None
+            lats_np = data_for_hour['latitude'].values
+            lons_np = data_for_hour['longitude'].values
+            # Ensure pressure levels from config are sorted ascending (required for interpolators)
+            self.pressure_levels = np.sort(self.config['pressure_levels'])
+            pressures_np = self.pressure_levels
 
-                lats_np = data_for_hour['latitude'].values
-                lons_np = data_for_hour['longitude'].values
-                # Ensure pressure levels from config are sorted ascending (required for interpolators)
-                self.pressure_levels = np.sort(self.config['pressure_levels'])
-                pressures_np = self.pressure_levels
+            # Find the pressure coordinate name in the dataset
+            pressure_coord_name = None
+            possible_p_coords = ['pressure_level', 'level', 'isobaricInhPa']
+            for pc in possible_p_coords:
+                if pc in data_for_hour.coords:
+                    pressure_coord_name = pc
+                    break
+            
+            if not pressure_coord_name:
+                print(f"ERROR: Could not find pressure coordinate in {filepath}. Available: {list(data_for_hour.coords.keys())}")
+                return None
 
-                # Find the pressure coordinate name in the dataset
-                pressure_coord_name = None
-                possible_p_coords = ['pressure_level', 'level', 'isobaricInhPa']
-                for pc in possible_p_coords:
-                    if pc in data_for_hour.coords:
-                        pressure_coord_name = pc
-                        break
-                
-                if not pressure_coord_name:
-                    print(f"ERROR: Could not find pressure coordinate in {filepath}. Available: {list(data_for_hour.coords.keys())}")
-                    return None
+            # Reindex data to match the sorted pressure levels from config
+            try:
+                data_for_hour = data_for_hour.reindex({pressure_coord_name: pressures_np})
+            except Exception as e_reindex:
+                 print(f"ERROR reindexing pressure levels: {e_reindex}")
+                 return None
+            
+            # Verify reindexing worked (no all-NaN slices introduced due to mismatch)
+            if data_for_hour['u'].isnull().all():
+                 print("ERROR: All data became NaN after pressure reindexing. Check if configured pressure levels match file levels.")
+                 return None
 
-                # Reindex data to match the sorted pressure levels from config
-                # This handles cases where the file has descending pressure (1000->100) 
-                # but we need ascending (100->1000) or vice versa.
-                # 'method=None' means exact matches only (no interpolation).
-                try:
-                    data_for_hour = data_for_hour.reindex({pressure_coord_name: pressures_np})
-                except Exception as e_reindex:
-                     print(f"ERROR reindexing pressure levels: {e_reindex}")
-                     return None
-                
-                # Verify reindexing worked (no all-NaN slices introduced due to mismatch)
-                if data_for_hour['u'].isnull().all():
-                     print("ERROR: All data became NaN after pressure reindexing. Check if configured pressure levels match file levels.")
-                     return None
+            # Ensure ascending order for lat/lon coordinates
+            if not np.all(np.diff(lats_np) > 0): # ERA5 latitudes are usually descending
+                lats_np = np.sort(lats_np) # Sort ascending
+                data_for_hour = data_for_hour.reindex(latitude=lats_np)
+            if not np.all(np.diff(lons_np) > 0):
+                lons_np = np.sort(lons_np)
+                data_for_hour = data_for_hour.reindex(longitude=lons_np)
 
-                # Ensure ascending order for lat/lon coordinates
-                if not np.all(np.diff(lats_np) > 0): # ERA5 latitudes are usually descending
-                    lats_np = np.sort(lats_np) # Sort ascending
-                    data_for_hour = data_for_hour.reindex(latitude=lats_np)
-                if not np.all(np.diff(lons_np) > 0):
-                    lons_np = np.sort(lons_np)
-                    data_for_hour = data_for_hour.reindex(longitude=lons_np)
-                # Pressures from config are already sorted. Ensure 'level' in data matches.
-                # The pressure coordinate is likely named 'pressure_level' or similar from the API.
+            # Extract, ensure (lat, lon, pressure) order, then flatten
+            u_values = data_for_hour['u'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+            v_values = data_for_hour['v'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+            w_values = data_for_hour['w'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten() # 'w' is vertical_velocity (Pa/s)
 
-                # Extract, ensure (lat, lon, pressure) order, then flatten
-                # xarray usually returns (time, pressure_level, lat, lon). After .sel(time=...), it's (pressure_level, lat, lon)
-                # We need to transpose to (latitude, longitude, pressure_level) for consistency with CSV loader
-                u_values = data_for_hour['u'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
-                v_values = data_for_hour['v'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
-                w_values = data_for_hour['w'].transpose('latitude', 'longitude', pressure_coord_name).values.flatten() # 'w' is vertical_velocity (Pa/s)
+            u_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(u_values, nan=0.0))
+            v_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(v_values, nan=0.0))
+            w_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(w_values, nan=0.0))
 
-                u_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(u_values, nan=0.0))
-                v_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(v_values, nan=0.0))
-                w_tuple = (lats_np, lons_np, pressures_np, np.nan_to_num(w_values, nan=0.0))
+            target_scalars = ['q', 't', 'z', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
+            scalars_data = {}
+            for scalar in target_scalars:
+                if scalar in data_for_hour:
+                    s_values = data_for_hour[scalar].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
+                    scalars_data[scalar] = (lats_np, lons_np, pressures_np, np.nan_to_num(s_values, nan=0.0))
+                else:
+                    print(f"WARNING: Variable '{scalar}' not found in {filepath} for hour {target_datetime_utc.hour} UTC. Skipping calculation.")
 
-                target_scalars = ['q', 't', 'clwc', 'ciwc', 'crwc', 'cswc', 'cc']
-                scalars_data = {}
-                for scalar in target_scalars:
-                    if scalar in data_for_hour:
-                        s_values = data_for_hour[scalar].transpose('latitude', 'longitude', pressure_coord_name).values.flatten()
-                        scalars_data[scalar] = (lats_np, lons_np, pressures_np, np.nan_to_num(s_values, nan=0.0))
-                    else:
-                        print(f"WARNING: Variable '{scalar}' not found in {filepath} for hour {target_datetime_utc.hour} UTC. Skipping calculation.")
+            print(f"DEBUG APIDataHandler: u_tuple[3] is None? {u_tuple[3] is None}")
+            print(f"DEBUG APIDataHandler: v_tuple[3] is None? {v_tuple[3] is None}")
+            print(f"DEBUG APIDataHandler: w_tuple[3] is None? {w_tuple[3] is None}")
 
-                print(f"DEBUG APIDataHandler: u_tuple[3] is None? {u_tuple[3] is None}")
-                print(f"DEBUG APIDataHandler: v_tuple[3] is None? {v_tuple[3] is None}")
-                print(f"DEBUG APIDataHandler: w_tuple[3] is None? {w_tuple[3] is None}")
-
-                return u_tuple, v_tuple, w_tuple, scalars_data
+            return u_tuple, v_tuple, w_tuple, scalars_data
 
         except Exception as e:
             print(f"ERROR processing NetCDF file {filepath}: {e}")
