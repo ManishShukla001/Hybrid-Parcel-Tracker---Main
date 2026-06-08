@@ -233,7 +233,10 @@ Factors out expansion and compression along vertical movements:
 
 ### 3. Full Anomaly Decomposition (`FULL_DECOMPOSITION`)
 Decomposes temperature anomaly variations ($T'$) into four integrated physical drivers along paths:
-$$T'(x,t) - T'(x_0,t_0) = \underbrace{-\int_{t_0}^{t} \frac{\partial \overline{T}}{\partial t} d\tau}_{\text{Seasonality}} \underbrace{-\int_{t_0}^{t} \mathbf{v} \cdot \nabla_h \overline{T} d\tau}_{\text{Advective}} + \underbrace{\int_{t_0}^{t} \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau}_{\text{Adiabatic}} + \underbrace{\int_{t_0}^{t} \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau}_{\text{Diabatic}}$$
+
+$$
+T'(x,t) - T'(x_0,t_0) = \underbrace{-\int_{t_0}^{t} \frac{\partial \overline{T}}{\partial t} d\tau}_{\text{Seasonality}} \underbrace{-\int_{t_0}^{t} \mathbf{v} \cdot \nabla_h \overline{T} d\tau}_{\text{Advective}} + \underbrace{\int_{t_0}^{t} \left[\frac{\kappa \overline{T}}{p} - \frac{\partial \overline{T}}{\partial p}\right] \omega d\tau}_{\text{Adiabatic}} + \underbrace{\int_{t_0}^{t} \left(\frac{p}{p_0}\right)^\kappa \frac{D\theta}{Dt} d\tau}_{\text{Diabatic}}
+$$
 
 To prepare the background climatology temperature field ($\overline{T}$ and derivatives), run the background download script prior to the simulation:
 ```bash
