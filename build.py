@@ -81,10 +81,16 @@ def main():
         return 1
     
     # Build and install the package in editable mode
-    if not run_command([sys.executable, "-m", "pip", "install", "-e", "."], 
-                      "Building and installing the package"):
-        print("[FAIL] Failed to build and install package")
-        return 1
+    # We first try with --no-build-isolation and --no-deps to support offline HPC clusters
+    # where build-time requirements (numpy, pybind11, setuptools) are pre-installed.
+    offline_cmd = [sys.executable, "-m", "pip", "install", "--no-build-isolation", "--no-deps", "-e", "."]
+    print("\nAttempting offline-friendly installation...")
+    if not run_command(offline_cmd, "Building and installing the package (offline mode)"):
+        print("\nOffline build failed or not supported. Falling back to standard installation...")
+        standard_cmd = [sys.executable, "-m", "pip", "install", "-e", "."]
+        if not run_command(standard_cmd, "Building and installing the package (standard mode)"):
+            print("[FAIL] Failed to build and install package")
+            return 1
     
     # Test the installation
     print("\n=== Running Verification Tests ===")
